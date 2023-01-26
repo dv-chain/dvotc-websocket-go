@@ -6,7 +6,7 @@ This package helps execute trade/orders against DVChains websocket API in golang
 
 ### *go get*
 ```sh
-$ go get -u github.com/dv-chain/dvotc-websocket-api
+go get -u github.com/dv-chain/dvotc-websocket-go
 ```
 
 
