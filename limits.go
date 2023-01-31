@@ -28,7 +28,6 @@ func (dvotc *DVOTCClient) ListLimitsBalances() (*AssetBalance, error) {
 		Type:  MessageTypeRequestResponse,
 		Event: dvotc.getRequestID(),
 		Topic: "limits",
-		Data:  nil,
 	}
 
 	err = conn.WriteJSON(payload)

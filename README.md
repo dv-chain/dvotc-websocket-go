@@ -46,3 +46,47 @@ func main() {
 	}
 }
 ```
+
+TODO:
+	- Reconneciton login
+	- LIFO channel
+	- State the minimum version of go required
+	- Code coverage (very easy to go for 100%)
+	- Create gh-actions for linting and test running
+	- Go docs
+
+
+### Solar System Exploration, 1950s – 1960s
+
+- [x] Ping Pong
+- [x] Market Buy Order
+- [x] Market Sell Order
+- [x] Limit Buy Order
+- [x] Limit Sell Order
+- [x] Limits
+- [x] List Available Symbols
+- [x] List Trades
+- [x] List Limits and Balances
+- [x] Cancel Orders
+- [x] SubscribeOrderChanges
+- SubscriptionNotifications
+	- [x] LOGIN
+	- [ ] BATCH_CREATED
+	- [ ] BATCH_SETTLED
+	- [ ] ORDER_CREATED
+	- [ ] ORDER_FILLED
+	- [ ] ORDER_CANCELLED
+	- [ ] SETTLEMENT_ADDED
+	- [ ] LIMIT_CHANGED
+	- [ ] LIMIT_REACHED_80
+	- [ ] IMIT_REACHED_95
+
+
+https://github.com/dv-chain/dv-chain/wiki/Websocket-API#subscribing-to-notifications
+What are the payloads for the other topics
+
+https://github.com/dv-chain/dv-chain/wiki/Websocket-API#place-order-message
+What is a client tag
+
+https://github.com/dv-chain/dv-chain/wiki/Websocket-API#subscribing-to-notifications
+I feel like its LIMIT_REACHED_95 and not IMIT_REACHED_95

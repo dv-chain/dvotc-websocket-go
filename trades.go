@@ -75,7 +75,7 @@ func (dvotc *DVOTCClient) ListTrades(IDs []string, tradeKeys []string, clientTag
 		return nil, err
 	}
 	if resp.Type == "error" {
-		return nil, fmt.Errorf("error with message: %s", string(resp.Data))
+		return nil, fmt.Errorf(string(resp.Data))
 	}
 
 	trades := make([]Trade, 0)

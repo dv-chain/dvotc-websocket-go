@@ -29,6 +29,7 @@ const (
 	MessageTypePingPong        MessageType = "ping-pong"
 	MessageTypeInfo            MessageType = "info"
 	MessageTypeError           MessageType = "error"
+	MessageTypeReconnect       MessageType = "reconnect"
 )
 
 type DVOTCClient struct {
@@ -37,22 +38,13 @@ type DVOTCClient struct {
 	apiKey    string
 
 	requestID int64
-
-	header *DVOTCHeader
-}
-
-type DVOTCHeader struct {
-	Timestamp  string `json:"dv-timestamp"`
-	TimeWindow string `json:"dv-timewindow"`
-	Signature  string `json:"dv-signature"`
-	ApiKey     string `json:"dv-api-key"`
 }
 
 type Payload struct {
 	Type  MessageType     `json:"type"`
 	Topic string          `json:"topic"`
-	Data  json.RawMessage `json:"data"`
 	Event string          `json:"event"`
+	Data  json.RawMessage `json:"data,omitempty"`
 }
 
 func NewDVOTCClient(wsURL, apiKey, apiSecret string) *DVOTCClient {
@@ -77,8 +69,10 @@ func (dvotc *DVOTCClient) getConn() (*websocket.Conn, error) {
 	}
 
 	signature := base64.StdEncoding.EncodeToString(h.Sum(nil))
-
-	u := url.URL{Scheme: "wss", Host: dvotc.wsURL, Path: "/websocket"}
+	u, err := url.Parse(dvotc.wsURL)
+	if err != nil {
+		return nil, err
+	}
 	header := http.Header{}
 	header.Set("dv-timestamp", fmt.Sprintf("%d", ts))
 	header.Set("dv-timewindow", fmt.Sprintf("%d", timeWindow))
@@ -124,36 +118,4 @@ func (dvotc *DVOTCClient) Ping() error {
 		return fmt.Errorf("returned error with message: %s", string(resp.Data))
 	}
 	return nil
-}
-
-func (dvotc *DVOTCClient) ListAvailableSymbols() ([]string, error) {
-	conn, err := dvotc.getConn()
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
-	payload := Payload{
-		Type:  MessageTypeRequestResponse,
-		Event: dvotc.getRequestID(),
-		Topic: "availablesymbols",
-	}
-
-	err = conn.WriteJSON(payload)
-	if err != nil {
-		return nil, err
-	}
-
-	resp := Payload{}
-	err = conn.ReadJSON(&resp)
-	if err != nil {
-		return nil, err
-	}
-
-	var symbols []string
-	err = json.Unmarshal(resp.Data, &symbols)
-	if err != nil {
-		return nil, err
-	}
-
-	return symbols, nil
 }
