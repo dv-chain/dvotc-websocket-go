@@ -1,4 +1,4 @@
-DVOTC Websocket API in Go
+DVOTC Websocket API in Go <a href='https://github.com/jpoles1/gopherbadger' target='_blank'>![gopherbadger-tag-do-not-edit](https://img.shields.io/badge/Go%20Coverage-41%25-brightgreen.svg?longCache=true&style=flat)</a>
 ===============
 This package helps execute trade/orders against DVChains websocket API in golang!
 
