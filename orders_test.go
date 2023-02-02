@@ -43,11 +43,13 @@ func TestPlaceMarketOrder(t *testing.T) {
 
 		orderStatus := dvotcWS.OrderStatus{}
 		err = faker.FakeData(&orderStatus)
+		require.NoError(t, err)
 		now := time.Now().UTC()
 		orderStatus.FilledAt = &now
 		orderStatus.CreatedAt = now
 		orderStatus.CancelledAt = nil
 		dataBytes, err = json.Marshal(orderStatus)
+		require.NoError(t, err)
 		p.Data = dataBytes
 		respBytes, err := json.Marshal(p)
 		require.NoError(t, err)
@@ -144,10 +146,12 @@ func TestPlaceLimitOrder(t *testing.T) {
 
 		orderStatus := dvotcWS.OrderStatus{}
 		err = faker.FakeData(&orderStatus)
+		require.NoError(t, err)
 		orderStatus.FilledAt = nil
 		orderStatus.CreatedAt = time.Now().UTC()
 		orderStatus.CancelledAt = nil
 		dataBytes, err = json.Marshal(orderStatus)
+		require.NoError(t, err)
 		p.Data = dataBytes
 		respBytes, err := json.Marshal(p)
 		require.NoError(t, err)

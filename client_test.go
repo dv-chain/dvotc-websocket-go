@@ -94,8 +94,8 @@ func (e *echoWebsocketServer) handler(w http.ResponseWriter, req *http.Request) 
 	e.timeWindow = req.Header.Get("dv-timewindow")
 
 	defer func() {
-		if err := e.StopServer(); err != nil {
-		}
+		err := e.StopServer()
+		require.NoError(e.t, err)
 	}()
 	mt, p, err := conn.ReadMessage()
 	if err != nil {
