@@ -102,7 +102,8 @@ func (e *echoWebsocketServer) handler(w http.ResponseWriter, req *http.Request) 
 
 	for _, m := range e.response {
 		fmt.Println("resp", string(m))
-		conn.WriteMessage(mt, m)
+		err := conn.WriteMessage(mt, m)
+		require.NoError(e.t, err)
 	}
 }
 

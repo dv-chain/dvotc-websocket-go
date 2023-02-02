@@ -99,7 +99,7 @@ func (dvotc *DVOTCClient) PlaceMarketOrder(marketOrder MarketOrderParams) (*Orde
 		return nil, err
 	}
 	if resp.Type == "error" {
-		return nil, errors.New(fmt.Sprintf("error placing order: %s", string(resp.Data)))
+		return nil, fmt.Errorf("%s", string(resp.Data))
 	}
 	orderRes := OrderStatus{}
 	if err := json.Unmarshal(resp.Data, &orderRes); err != nil {
@@ -147,7 +147,7 @@ func (dvotc *DVOTCClient) PlaceLimitOrder(limitOrder LimitOrderParams) (*OrderSt
 		return nil, err
 	}
 	if resp.Type == "error" {
-		return nil, errors.New(fmt.Sprintf("error placing order: %s", string(resp.Data)))
+		return nil, fmt.Errorf("%s", string(resp.Data))
 	}
 
 	orderRes := OrderStatus{}
