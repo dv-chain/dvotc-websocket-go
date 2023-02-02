@@ -60,6 +60,8 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
+// setupTestWebsocketServer sets up websocket server and returns url to access
+// request data passed in is asserted for actual value received
 func setupTestWebsocketServer(e *echoWebsocketServer) string {
 	srv := httptest.NewServer(http.HandlerFunc(e.handler))
 	u, _ := url.Parse(srv.URL)
@@ -91,7 +93,10 @@ func (e *echoWebsocketServer) handler(w http.ResponseWriter, req *http.Request) 
 	e.timestamp = req.Header.Get("dv-timestamp")
 	e.timeWindow = req.Header.Get("dv-timewindow")
 
-	// defer e.StopServer()
+	defer func() {
+		if err := e.StopServer(); err != nil {
+		}
+	}()
 	mt, p, err := conn.ReadMessage()
 	if err != nil {
 		log.Printf("cannot read message: %v", err)
