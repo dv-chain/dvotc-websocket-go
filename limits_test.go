@@ -27,13 +27,14 @@ func TestListLimitsBalances(t *testing.T) {
 		err := faker.FakeData(&asset)
 		require.NoError(t, err)
 		data.Assets = append(data.Assets, asset)
+		i += 1
 	}
 
 	dataBytes, err := json.Marshal(data)
 	require.NoError(t, err)
 	p.Data = dataBytes
 
-	respBytes, err := json.Marshal(data)
+	respBytes, err := json.Marshal(p)
 	require.NoError(t, err)
 
 	url := setupTestWebsocketServer(
@@ -48,8 +49,6 @@ func TestListLimitsBalances(t *testing.T) {
 	assets, err := client.ListLimitsBalances()
 	assert.NoError(t, err)
 	assert.Len(t, assets.Assets, 5)
-	// assert.EqualValues(t, []string{"BTC/USD", "BTC/CAD"}, symbols)
-	// assert.NotEqualValues(t, []string{"XRP/USD", "XRP/CAD"}, symbols)
 }
 
 func TestListLimitsBalances_Error(t *testing.T) {

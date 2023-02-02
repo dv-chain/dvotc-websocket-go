@@ -3,6 +3,7 @@ module github.com/dv-chain/dvotc-websocket-go
 go 1.19
 
 require (
+	github.com/avast/retry-go/v4 v4.3.2
 	github.com/fasthttp/websocket v1.5.0
 	github.com/go-faker/faker/v4 v4.0.0
 	github.com/stretchr/testify v1.8.1

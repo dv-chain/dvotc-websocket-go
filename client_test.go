@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	dvotcWS "github.com/dv-chain/dvotc-websocket-go"
@@ -54,17 +55,17 @@ func TestSettingUpConnection(t *testing.T) {
 	assert.True(t, isValid, "websocket signature not valid")
 }
 
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+}
+
 func setupTestWebsocketServer(e *echoWebsocketServer) string {
 	srv := httptest.NewServer(http.HandlerFunc(e.handler))
 	u, _ := url.Parse(srv.URL)
 	u.Scheme = "ws"
 
 	return u.String()
-}
-
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
 }
 
 type echoWebsocketServer struct {
@@ -90,19 +91,91 @@ func (e *echoWebsocketServer) handler(w http.ResponseWriter, req *http.Request) 
 	e.timestamp = req.Header.Get("dv-timestamp")
 	e.timeWindow = req.Header.Get("dv-timewindow")
 
-	defer e.StopServer()
+	// defer e.StopServer()
 	mt, p, err := conn.ReadMessage()
 	if err != nil {
 		log.Printf("cannot read message: %v", err)
 		return
 	}
+	fmt.Println("req", string(p))
 	require.JSONEq(e.t, string(e.request), string(p))
 
 	for _, m := range e.response {
+		fmt.Println("resp", string(m))
 		conn.WriteMessage(mt, m)
 	}
 }
 
 func (e *echoWebsocketServer) StopServer() error {
+	fmt.Println("end")
+	return e.conn.Close()
+}
+
+func setupTestV2WebsocketServer(e *echoV2WebsocketServer) string {
+	srv := httptest.NewServer(http.HandlerFunc(e.handler))
+	u, _ := url.Parse(srv.URL)
+	u.Scheme = "ws"
+
+	return u.String()
+}
+
+type echoV2WebsocketServer struct {
+	t          *testing.T
+	conn       *websocket.Conn
+	apiKey     string
+	signature  string
+	timestamp  string
+	timeWindow string
+	rrChan     chan ([2][]byte)
+}
+
+func (e *echoV2WebsocketServer) handler(w http.ResponseWriter, req *http.Request) {
+	fmt.Println("initiate connection ", len(e.rrChan))
+	conn, err := upgrader.Upgrade(w, req, nil)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("cannot upgrade: %v", err), http.StatusInternalServerError)
+	}
+
+	e.apiKey = req.Header.Get("dv-api-key")
+	e.signature = req.Header.Get("dv-signature")
+	e.timestamp = req.Header.Get("dv-timestamp")
+	e.timeWindow = req.Header.Get("dv-timewindow")
+	e.conn = conn
+
+	count := 1
+	for rr := range e.rrChan {
+		req, res := rr[0], rr[1]
+		// var mt int
+		// var p []byte
+		// var err error
+		fmt.Println("writing count ", count)
+		fmt.Println(string(req), string(res))
+		if len(req) > 0 {
+			_, p, err := conn.ReadMessage()
+			if err != nil {
+				log.Printf("cannot read message: %v", err)
+				return
+			}
+			fmt.Println("validating ", string(req), string(p))
+			require.JSONEq(e.t, string(req), string(p))
+		}
+
+		if len(res) > 0 {
+			if err := conn.WriteMessage(1, res); err != nil {
+				log.Printf("cannot wrtite message: %v", err)
+				return
+			}
+
+			if strings.Contains(string(res), "reconnect") {
+				fmt.Println("server shutting down due to reconnect")
+				return
+			}
+		}
+		count++
+	}
+}
+
+func (e *echoV2WebsocketServer) StopServer() error {
+	fmt.Println("end")
 	return e.conn.Close()
 }

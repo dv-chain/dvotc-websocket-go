@@ -2,7 +2,10 @@ package dvotcWS
 
 import (
 	"encoding/json"
-	"time"
+	"fmt"
+	"log"
+
+	"github.com/fasthttp/websocket"
 )
 
 type LevelData struct {
@@ -50,32 +53,36 @@ func (dvotc *DVOTCClient) SubscribeLevels(symbol string) (*Subscription[LevelDat
 				return
 			default:
 				resp := Payload{}
-				if err := conn.ReadJSON(&resp); err != nil {
-					continue
-				}
-				if resp.Type == "error" {
+				if err := sub.conn.ReadJSON(&resp); err != nil {
+					if websocket.IsUnexpectedCloseError(err, websocket.CloseAbnormalClosure) {
+						// server closed connection
+						log.Default().Print("server closed connection")
+					}
 					return
+				}
+				switch resp.Type {
+				case MessageTypeError:
+					return
+				case MessageTypeInfo:
+					if resp.Event == "reconnect" {
+						newConn, err := dvotc.retryConnWithPayload(payload)
+						if err != nil {
+							fmt.Println(err)
+							// can't do much after all retries fail
+							return
+						}
+						sub.conn = newConn
+						fmt.Println("after assignment")
+					}
+					continue
+				case MessageTypePingPong:
+					continue
 				}
 				levelData := LevelData{}
 				if err := json.Unmarshal(resp.Data, &levelData); err != nil {
 					return
 				}
 				sub.Data <- levelData
-			}
-		}
-	}()
-
-	// keep conneciton alive
-	go func() {
-		for {
-			time.Sleep(time.Second * 5)
-			payload := &Payload{
-				Type:  MessageTypePingPong,
-				Event: dvotc.getRequestID(),
-				Topic: "ping-pong",
-			}
-			if err := conn.WriteJSON(payload); err != nil {
-				return
 			}
 		}
 	}()
