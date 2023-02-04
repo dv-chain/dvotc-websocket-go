@@ -75,8 +75,6 @@ func (dvotc *DVOTCClient) SubscribeLevels(symbol string) (*Subscription[LevelDat
 						fmt.Println("after assignment")
 					}
 					continue
-				case MessageTypePingPong:
-					continue
 				}
 				levelData := LevelData{}
 				if err := json.Unmarshal(resp.Data, &levelData); err != nil {

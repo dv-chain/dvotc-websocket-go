@@ -32,7 +32,7 @@ func Verify(msg, key []byte, hash string) (bool, error) {
 	return hmac.Equal(sig, mac.Sum(nil)), nil
 }
 
-func TestSettingUpConnection(t *testing.T) {
+func TestSettingUpConnectionAndValidatingSecret(t *testing.T) {
 	e := &echoWebsocketServer{
 		t:        t,
 		request:  []byte(`{"type": "ping-pong", "topic": "Topiccs", "event": "10"}`),
@@ -53,6 +53,24 @@ func TestSettingUpConnection(t *testing.T) {
 	isValid, err := Verify([]byte(msg), []byte(apiSecret), e.signature)
 	assert.NoError(t, err)
 	assert.True(t, isValid, "websocket signature not valid")
+}
+
+func TestSettingUpConnection_Fail(t *testing.T) {
+	apiKey := faker.UUIDHyphenated()
+	apiSecret := "das87d8sa7d98a7s89dhb"
+
+	t.Run("invalid_ws_url", func(t *testing.T) {
+		// w/o protocol
+		client := dvotcWS.NewDVOTCClient("^WQE&^E^QW%E", apiKey, apiSecret)
+		err := client.Ping()
+		assert.ErrorContains(t, err, "invalid URL escape")
+	})
+
+	t.Run("fail_to_dial", func(t *testing.T) {
+		client := dvotcWS.NewDVOTCClient("wss://something/websocket", apiKey, apiSecret)
+		err := client.Ping()
+		assert.ErrorContains(t, err, "dial tcp: lookup something: no such host")
+	})
 }
 
 var upgrader = websocket.Upgrader{

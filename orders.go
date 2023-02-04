@@ -241,8 +241,6 @@ func (dvotc *DVOTCClient) SubscribeOrderChanges(status string) (*Subscription[Or
 						sub.conn = newConn
 					}
 					continue
-				case MessageTypePingPong:
-					continue
 				}
 
 				orderStatus := OrderStatus{}

@@ -2,7 +2,11 @@ package dvotcWS
 
 import (
 	"encoding/json"
+	"fmt"
+	"log"
 	"time"
+
+	"github.com/fasthttp/websocket"
 )
 
 type LoginNotification struct {
@@ -20,7 +24,7 @@ type NotificationUser struct {
 	LastName     string          `json:"lastName"`
 	CompanyName  string          `json:"companyName"`
 	UUID         string          `json:"uuid"`
-	GroupAccount json.RawMessage `json:"groupAccount"`
+	GroupAccount json.RawMessage `json:"groupAccount,omitempty"`
 }
 
 type BatchCreatedNotification struct {
@@ -154,16 +158,32 @@ func SubscribeNotifications[
 				return
 			default:
 				resp := Payload{}
-				if err := conn.ReadJSON(&resp); err != nil {
+				if err := sub.conn.ReadJSON(&resp); err != nil {
+					if websocket.IsUnexpectedCloseError(err, websocket.CloseAbnormalClosure) {
+						// server closed connection
+						log.Default().Print("server closed connection")
+					}
 					return
 				}
-
-				if resp.Type == MessageTypePingPong {
+				fmt.Println(resp)
+				switch resp.Type {
+				case MessageTypeError:
+					return
+				case MessageTypeInfo:
+					if resp.Event == "reconnect" {
+						newConn, err := dvotc.retryConnWithPayload(payload)
+						if err != nil {
+							// can't do much after all retries fail
+							fmt.Println(err)
+							return
+						}
+						sub.conn = newConn
+					}
+					continue
+				case MessageTypePingPong:
 					continue
 				}
-				if resp.Type == "error" {
-					return
-				}
+
 				var payload K
 				if err := json.Unmarshal(resp.Data, &payload); err != nil {
 					return
