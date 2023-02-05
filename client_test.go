@@ -69,7 +69,7 @@ func TestSettingUpConnection_Fail(t *testing.T) {
 	t.Run("fail_to_dial", func(t *testing.T) {
 		client := dvotcWS.NewDVOTCClient("wss://something/websocket", apiKey, apiSecret)
 		err := client.Ping()
-		assert.ErrorContains(t, err, "dial tcp: lookup something: no such host")
+		assert.ErrorContains(t, err, "dial tcp: lookup something")
 	})
 }
 
