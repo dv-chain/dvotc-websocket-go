@@ -100,25 +100,25 @@ func (dvotc *DVOTCClient) SubscribeBatchCreated() (*Subscription[BatchCreatedNot
 	return sub, err
 }
 
-func (dvotc *DVOTCClient) SubscribeOrderCreated() (*Subscription[OrderNotification], error) {
-	sub, err := SubscribeNotifications[OrderNotification](dvotc, NOTIFICATION_ORDER_CREATED)
-	return sub, err
-}
+// func (dvotc *DVOTCClient) SubscribeOrderCreated() (*Subscription[OrderNotification], error) {
+// 	sub, err := SubscribeNotifications[OrderNotification](dvotc, NOTIFICATION_ORDER_CREATED)
+// 	return sub, err
+// }
 
-func (dvotc *DVOTCClient) SubscribeOrderFilled() (*Subscription[OrderNotification], error) {
-	sub, err := SubscribeNotifications[OrderNotification](dvotc, NOTIFICATION_ORDER_FILLED)
-	return sub, err
-}
+// func (dvotc *DVOTCClient) SubscribeOrderFilled() (*Subscription[OrderNotification], error) {
+// 	sub, err := SubscribeNotifications[OrderNotification](dvotc, NOTIFICATION_ORDER_FILLED)
+// 	return sub, err
+// }
 
-func (dvotc *DVOTCClient) SubscribeOrderCancelled() (*Subscription[OrderNotification], error) {
-	sub, err := SubscribeNotifications[OrderNotification](dvotc, NOTIFICATION_ORDER_CANCELLED)
-	return sub, err
-}
+// func (dvotc *DVOTCClient) SubscribeOrderCancelled() (*Subscription[OrderNotification], error) {
+// 	sub, err := SubscribeNotifications[OrderNotification](dvotc, NOTIFICATION_ORDER_CANCELLED)
+// 	return sub, err
+// }
 
-func (dvotc *DVOTCClient) SubscribeLimitReached80() (*Subscription[LimitReached80Notification], error) {
-	sub, err := SubscribeNotifications[LimitReached80Notification](dvotc, NOTIFICATION_LIMIT_REACHED_80)
-	return sub, err
-}
+// func (dvotc *DVOTCClient) SubscribeLimitReached80() (*Subscription[LimitReached80Notification], error) {
+// 	sub, err := SubscribeNotifications[LimitReached80Notification](dvotc, NOTIFICATION_LIMIT_REACHED_80)
+// 	return sub, err
+// }
 
 func SubscribeNotifications[
 	K LoginNotification |
@@ -159,7 +159,7 @@ func SubscribeNotifications[
 			default:
 				resp := Payload{}
 				if err := sub.conn.ReadJSON(&resp); err != nil {
-					if websocket.IsUnexpectedCloseError(err, websocket.CloseAbnormalClosure) {
+					if !websocket.IsUnexpectedCloseError(err, websocket.CloseAbnormalClosure) {
 						// server closed connection
 						log.Default().Print("server closed connection")
 					}
@@ -193,7 +193,7 @@ func SubscribeNotifications[
 		}
 	}()
 
-	// keep conneciton alive
+	// keep connection alive
 	go func() {
 		for {
 			time.Sleep(time.Second * 5)

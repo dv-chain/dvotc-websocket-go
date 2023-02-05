@@ -139,12 +139,13 @@ func setupTestV2WebsocketServer(e *echoV2WebsocketServer) string {
 	srv := httptest.NewServer(http.HandlerFunc(e.handler))
 	u, _ := url.Parse(srv.URL)
 	u.Scheme = "ws"
-
+	e.srv = srv
 	return u.String()
 }
 
 type echoV2WebsocketServer struct {
 	t          *testing.T
+	srv        *httptest.Server
 	conn       *websocket.Conn
 	apiKey     string
 	signature  string
@@ -169,9 +170,6 @@ func (e *echoV2WebsocketServer) handler(w http.ResponseWriter, req *http.Request
 	count := 1
 	for rr := range e.rrChan {
 		req, res := rr[0], rr[1]
-		// var mt int
-		// var p []byte
-		// var err error
 		fmt.Println("writing count ", count)
 		fmt.Println(string(req), string(res))
 		if len(req) > 0 {
@@ -182,6 +180,7 @@ func (e *echoV2WebsocketServer) handler(w http.ResponseWriter, req *http.Request
 			}
 			fmt.Println("validating ", string(req), string(p))
 			require.JSONEq(e.t, string(req), string(p))
+			fmt.Println("after validating")
 		}
 
 		if len(res) > 0 {
@@ -201,5 +200,6 @@ func (e *echoV2WebsocketServer) handler(w http.ResponseWriter, req *http.Request
 
 func (e *echoV2WebsocketServer) StopServer() error {
 	fmt.Println("end")
+	e.srv.Close()
 	return e.conn.Close()
 }

@@ -54,7 +54,7 @@ func (dvotc *DVOTCClient) SubscribeLevels(symbol string) (*Subscription[LevelDat
 			default:
 				resp := Payload{}
 				if err := sub.conn.ReadJSON(&resp); err != nil {
-					if websocket.IsUnexpectedCloseError(err, websocket.CloseAbnormalClosure) {
+					if !websocket.IsUnexpectedCloseError(err, websocket.CloseAbnormalClosure) {
 						// server closed connection
 						log.Default().Print("server closed connection")
 					}

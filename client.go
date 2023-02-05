@@ -38,7 +38,7 @@ type DVOTCClient struct {
 	apiSecret string
 	apiKey    string
 
-	requestID int64
+	requestID int
 
 	mu sync.Mutex
 }
@@ -60,7 +60,8 @@ func NewDVOTCClient(wsURL, apiKey, apiSecret string) *DVOTCClient {
 }
 
 func (dvotc *DVOTCClient) retryConnWithPayload(payload Payload) (conn *websocket.Conn, err error) {
-	// default values are good enough https://pkg.go.dev/github.com/avast/retry-go#pkg-variables
+	// most default values are good enough
+	// read more https://pkg.go.dev/github.com/avast/retry-go#pkg-variables
 	err = retry.Do(func() error {
 		conn, err = dvotc.getConn()
 		if err != nil {
@@ -72,7 +73,7 @@ func (dvotc *DVOTCClient) retryConnWithPayload(payload Payload) (conn *websocket
 			return err
 		}
 		return nil
-	})
+	}, retry.DelayType(retry.FixedDelay))
 
 	return
 }
