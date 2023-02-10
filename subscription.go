@@ -21,5 +21,8 @@ func (s *Subscription[_]) StopConsuming() error {
 	close(s.done)
 	<-s.Data
 
-	return s.conn.Close()
+	if s.conn != nil {
+		return s.conn.Close()
+	}
+	return nil
 }

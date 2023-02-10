@@ -178,9 +178,9 @@ func (e *echoV2WebsocketServer) handler(w http.ResponseWriter, req *http.Request
 				log.Printf("cannot read message: %v", err)
 				return
 			}
-			fmt.Println("validating ", string(req), string(p))
+			// fmt.Println("validating ", string(req), string(p))
 			require.JSONEq(e.t, string(req), string(p))
-			fmt.Println("after validating")
+			// fmt.Println("after validating")
 		}
 
 		if len(res) > 0 {
