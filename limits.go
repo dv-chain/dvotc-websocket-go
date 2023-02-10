@@ -2,7 +2,6 @@ package dvotcWS
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 )
 
@@ -28,7 +27,6 @@ func (dvotc *DVOTCClient) ListLimitsBalances() (*AssetBalance, error) {
 		Type:  MessageTypeRequestResponse,
 		Event: dvotc.getRequestID(),
 		Topic: "limits",
-		Data:  nil,
 	}
 
 	err = conn.WriteJSON(payload)
@@ -41,7 +39,7 @@ func (dvotc *DVOTCClient) ListLimitsBalances() (*AssetBalance, error) {
 		return nil, err
 	}
 	if resp.Type == "error" {
-		return nil, errors.New(fmt.Sprintf("error getting limits: %s", string(resp.Data)))
+		return nil, fmt.Errorf("%s", string(resp.Data))
 	}
 
 	assetBalances := AssetBalance{}

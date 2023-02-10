@@ -21,15 +21,8 @@ func (s *Subscription[_]) StopConsuming() error {
 	close(s.done)
 	<-s.Data
 
-	payload := Payload{
-		Type:  MessageTypeUnsubscribe,
-		Event: s.event,
-		Topic: s.topic,
+	if s.conn != nil {
+		return s.conn.Close()
 	}
-	err := s.conn.WriteJSON(payload)
-	if err != nil {
-		return err
-	}
-
-	return s.conn.Close()
+	return nil
 }

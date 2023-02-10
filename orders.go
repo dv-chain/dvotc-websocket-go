@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"time"
+
+	"github.com/fasthttp/websocket"
 )
 
 type Order struct {
@@ -96,7 +99,7 @@ func (dvotc *DVOTCClient) PlaceMarketOrder(marketOrder MarketOrderParams) (*Orde
 		return nil, err
 	}
 	if resp.Type == "error" {
-		return nil, errors.New(fmt.Sprintf("error placing order: %s", string(resp.Data)))
+		return nil, fmt.Errorf("%s", string(resp.Data))
 	}
 	orderRes := OrderStatus{}
 	if err := json.Unmarshal(resp.Data, &orderRes); err != nil {
@@ -144,7 +147,7 @@ func (dvotc *DVOTCClient) PlaceLimitOrder(limitOrder LimitOrderParams) (*OrderSt
 		return nil, err
 	}
 	if resp.Type == "error" {
-		return nil, errors.New(fmt.Sprintf("error placing order: %s", string(resp.Data)))
+		return nil, fmt.Errorf("%s", string(resp.Data))
 	}
 
 	orderRes := OrderStatus{}
@@ -217,15 +220,27 @@ func (dvotc *DVOTCClient) SubscribeOrderChanges(status string) (*Subscription[Or
 				return
 			default:
 				resp := Payload{}
-				if err := conn.ReadJSON(&resp); err != nil {
+				if err := sub.conn.ReadJSON(&resp); err != nil {
+					if !websocket.IsUnexpectedCloseError(err, websocket.CloseAbnormalClosure) {
+						// server closed connection
+						log.Default().Print("server closed connection")
+					}
 					continue
 				}
-				if resp.Type == MessageTypePingPong {
-					// discard
-					continue
-				}
-				if resp.Type == "error" {
+				switch resp.Type {
+				case MessageTypeError:
 					return
+				case MessageTypeInfo:
+					if resp.Event == "reconnect" {
+						newConn, err := dvotc.retryConnWithPayload(payload)
+						if err != nil {
+							// can't do much after all retries fail
+							fmt.Println(err)
+							return
+						}
+						sub.conn = newConn
+					}
+					continue
 				}
 
 				orderStatus := OrderStatus{}
@@ -233,20 +248,6 @@ func (dvotc *DVOTCClient) SubscribeOrderChanges(status string) (*Subscription[Or
 					return
 				}
 				sub.Data <- orderStatus
-			}
-		}
-	}()
-
-	go func() {
-		for {
-			time.Sleep(time.Second)
-			payload := &Payload{
-				Type:  MessageTypePingPong,
-				Event: dvotc.getRequestID(),
-				Topic: "Topiccs",
-			}
-			if err := conn.WriteJSON(payload); err != nil {
-				return
 			}
 		}
 	}()

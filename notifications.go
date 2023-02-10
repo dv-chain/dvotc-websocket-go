@@ -2,7 +2,11 @@ package dvotcWS
 
 import (
 	"encoding/json"
+	"fmt"
+	"log"
 	"time"
+
+	"github.com/fasthttp/websocket"
 )
 
 type LoginNotification struct {
@@ -14,16 +18,17 @@ type LoginNotification struct {
 }
 
 type NotificationUser struct {
-	UserID       int64           `json:"id"`
-	ID           string          `json:"_id"`
-	FirstName    string          `json:"firstName"`
-	LastName     string          `json:"lastName"`
-	CompanyName  string          `json:"companyName"`
-	UUID         string          `json:"uuid"`
-	GroupAccount json.RawMessage `json:"groupAccount"`
+	UserID       int64            `json:"id"`
+	ID           string           `json:"_id"`
+	FirstName    string           `json:"firstName"`
+	LastName     string           `json:"lastName"`
+	CompanyName  string           `json:"companyName"`
+	UUID         string           `json:"uuid"`
+	GroupAccount *json.RawMessage `json:"groupAccount,omitempty"`
 }
 
-type BatchCreatedNotification struct {
+type BatchNotificaiton struct {
+	Info         *Info            `json:"info,omitempty"`
 	BatchDetails []BatchDetail    `json:"batchDetails"`
 	UserName     string           `json:"userName"`
 	UserEmail    string           `json:"userEmail"`
@@ -31,10 +36,29 @@ type BatchCreatedNotification struct {
 	User         NotificationUser `json:"user"`
 	Text         string           `json:"text"`
 }
+type BatchCreatedNotification = BatchNotificaiton
+
+type BatchSettledNotification = BatchNotificaiton
+
+type SettlementAddedNotification = BatchSettledNotification
+
+type Info struct {
+	ID          int64       `json:"id"`
+	Type        string      `json:"type"`
+	BatchID     int64       `json:"batch_id"`
+	UserID      int64       `json:"user_id"`
+	AssetID     int64       `json:"asset_id"`
+	NetQuantity json.Number `json:"net_quantity" faker:"oneof: -5, 6"`
+	CreatedAt   string      `json:"created_at"`
+	UpdatedAt   string      `json:"updated_at"`
+	UpdatedBy   int64       `json:"updated_by"`
+	Reference   string      `json:"reference"`
+	Asset       string      `json:"asset"`
+}
 
 type BatchDetail struct {
-	Symbol      string `json:"symbol"`
-	NetQuantity string `json:"net_quantity"`
+	Symbol      string      `json:"symbol"`
+	NetQuantity json.Number `json:"net_quantity" faker:"oneof: -5, 6"`
 }
 
 type OrderNotification struct {
@@ -43,7 +67,7 @@ type OrderNotification struct {
 	ID           string           `json:"_id"`
 	Quantity     int64            `json:"quantity"`
 	Price        float64          `json:"price"`
-	LimitPrice   float64          `json:"limitPrice"`
+	LimitPrice   json.Number      `json:"limitPrice"`
 	Side         string           `json:"side"`
 	OrderType    string           `json:"orderType"`
 	Source       string           `json:"source"`
@@ -58,30 +82,50 @@ type OrderNotification struct {
 	Text         string           `json:"text"`
 }
 
-type LimitReached80Notification struct {
-	Asset     string           `json:"asset"`
-	Unsettled float64          `json:"unsettled"`
-	BuyMax    int64            `json:"buyMax"`
-	SellMax   int64            `json:"sellMax"`
-	Message   string           `json:"message"`
+// type LimitReached80Notification struct {
+// 	Asset     string           `json:"asset"`
+// 	Unsettled float64          `json:"unsettled"`
+// 	BuyMax    int64            `json:"buyMax"`
+// 	SellMax   int64            `json:"sellMax"`
+// 	Message   string           `json:"message"`
+// 	User      NotificationUser `json:"user"`
+// 	UserName  string           `json:"userName"`
+// 	UserEmail string           `json:"userEmail"`
+// 	Text      string           `json:"text"`
+// }
+
+type LimitChangedNotification struct {
+	Changes   []Change         `json:"changes"`
 	User      NotificationUser `json:"user"`
 	UserName  string           `json:"userName"`
 	UserEmail string           `json:"userEmail"`
 	Text      string           `json:"text"`
 }
 
+type Change struct {
+	Symbol           string      `json:"symbol"`
+	OldMin           json.Number `json:"oldMin" faker:"oneof: -5, 6"`
+	NewMin           json.Number `json:"newMin" faker:"oneof: -5, 6"`
+	OldMax           json.Number `json:"oldMax" faker:"oneof: -5, 6"`
+	NewMax           json.Number `json:"newMax" faker:"oneof: -5, 6"`
+	OldUnsettledBuy  json.Number `json:"oldUnsettledBuy" faker:"oneof: -5, 6"`
+	NewUnsettledBuy  json.Number `json:"newUnsettledBuy" faker:"oneof: -5, 6"`
+	OldUnsettledSell json.Number `json:"oldUnsettledSell" faker:"oneof: -5, 6"`
+	NewUnsettledSell json.Number `json:"newUnsettledSell" faker:"oneof: -5, 6"`
+}
+
 const (
 	NOTIFICAITON_LOGIN            = "LOGIN"
 	NOTIFICATION_BATCH_CREATED    = "BATCH_CREATED"
-	NOTIFICATION_BATCH_SETTLED    = "BATCH_SETTLED" // implement me
+	NOTIFICATION_BATCH_SETTLED    = "BATCH_SETTLED"
+	NOTIFICATION_SETTLEMENT_ADDED = "SETTLEMENT_ADDED"
 	NOTIFICATION_ORDER_CREATED    = "ORDER_CREATED"
 	NOTIFICATION_ORDER_FILLED     = "ORDER_FILLED"
 	NOTIFICATION_ORDER_CANCELLED  = "ORDER_CANCELLED"
-	NOTIFICATION_SETTLEMENT_ADDED = "SETTLEMENT_ADDED" // implement me
 
-	NOTIFICATION_LIMIT_CHANGED    = "LIMIT_CHANGED"    // implement me
-	NOTIFICATION_LIMIT_REACHED_80 = "LIMIT_REACHED_80" // implement me
-	NOTIFICATION_LIMIT_REACHED_95 = "LIMIT_REACHED_95" // implement me
+	NOTIFICATION_LIMIT_CHANGED = "LIMIT_CHANGED"
+	// NOTIFICATION_LIMIT_REACHED_80 = "LIMIT_REACHED_80" // disabled
+	// NOTIFICATION_LIMIT_REACHED_95 = "LIMIT_REACHED_95" // disabled
 
 )
 
@@ -93,6 +137,16 @@ func (dvotc *DVOTCClient) SubscribeLogin() (*Subscription[LoginNotification], er
 
 func (dvotc *DVOTCClient) SubscribeBatchCreated() (*Subscription[BatchCreatedNotification], error) {
 	sub, err := SubscribeNotifications[BatchCreatedNotification](dvotc, NOTIFICATION_BATCH_CREATED)
+	return sub, err
+}
+
+func (dvotc *DVOTCClient) SubscribeBatchSettled() (*Subscription[BatchSettledNotification], error) {
+	sub, err := SubscribeNotifications[BatchSettledNotification](dvotc, NOTIFICATION_BATCH_SETTLED)
+	return sub, err
+}
+
+func (dvotc *DVOTCClient) SubscribeSettlementAdded() (*Subscription[SettlementAddedNotification], error) {
+	sub, err := SubscribeNotifications[SettlementAddedNotification](dvotc, NOTIFICATION_SETTLEMENT_ADDED)
 	return sub, err
 }
 
@@ -111,16 +165,16 @@ func (dvotc *DVOTCClient) SubscribeOrderCancelled() (*Subscription[OrderNotifica
 	return sub, err
 }
 
-func (dvotc *DVOTCClient) SubscribeLimitReached80() (*Subscription[LimitReached80Notification], error) {
-	sub, err := SubscribeNotifications[LimitReached80Notification](dvotc, NOTIFICATION_LIMIT_REACHED_80)
+func (dvotc *DVOTCClient) SubscribeLimitChanged() (*Subscription[LimitChangedNotification], error) {
+	sub, err := SubscribeNotifications[LimitChangedNotification](dvotc, NOTIFICATION_LIMIT_CHANGED)
 	return sub, err
 }
 
 func SubscribeNotifications[
 	K LoginNotification |
-		BatchCreatedNotification |
+		BatchNotificaiton |
 		OrderNotification |
-		LimitReached80Notification,
+		LimitChangedNotification,
 ](dvotc *DVOTCClient, topic string) (*Subscription[K], error) {
 	conn, err := dvotc.getConn()
 	if err != nil {
@@ -154,18 +208,38 @@ func SubscribeNotifications[
 				return
 			default:
 				resp := Payload{}
-				if err := conn.ReadJSON(&resp); err != nil {
+				if err := sub.conn.ReadJSON(&resp); err != nil {
+					if !websocket.IsUnexpectedCloseError(err, websocket.CloseAbnormalClosure) {
+						// server closed connection
+						log.Default().Print("server closed connection")
+					}
 					return
 				}
-
-				if resp.Type == MessageTypePingPong {
+				if resp.Topic != "ping-pong" {
+					fmt.Println(resp.Event, resp.Topic, resp.Type, string(resp.Data))
+				}
+				switch resp.Type {
+				case MessageTypeError:
+					return
+				case MessageTypeInfo:
+					if resp.Event == "reconnect" {
+						sub.conn = nil
+						newConn, err := dvotc.retryConnWithPayload(payload)
+						if err != nil {
+							// can't do much after all retries fail
+							fmt.Println(err)
+							return
+						}
+						sub.conn = newConn
+					}
+					continue
+				case MessageTypePingPong:
 					continue
 				}
-				if resp.Type == "error" {
-					return
-				}
+
 				var payload K
 				if err := json.Unmarshal(resp.Data, &payload); err != nil {
+					fmt.Println(err)
 					return
 				}
 				sub.Data <- payload
@@ -173,17 +247,28 @@ func SubscribeNotifications[
 		}
 	}()
 
-	// keep conneciton alive
+	// keep connection alive
 	go func() {
+		ticker := time.NewTicker(5 * time.Second)
 		for {
-			time.Sleep(time.Second * 5)
-			payload := &Payload{
-				Type:  MessageTypePingPong,
-				Event: dvotc.getRequestID(),
-				Topic: "ping-pong",
-			}
-			if err := conn.WriteJSON(payload); err != nil {
+			select {
+			case <-sub.done:
+				ticker.Stop()
 				return
+			case <-ticker.C:
+				if sub.conn == nil {
+					// means its reconnecting
+					continue
+				}
+				payload := &Payload{
+					Type:  MessageTypePingPong,
+					Event: dvotc.getRequestID(),
+					Topic: "ping-pong",
+				}
+				if err := sub.conn.WriteJSON(payload); err != nil {
+					fmt.Println(err)
+					return
+				}
 			}
 		}
 	}()

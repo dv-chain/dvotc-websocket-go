@@ -1,4 +1,4 @@
-DVOTC Websocket API in Go
+DVOTC Websocket API in Go <a href='https://github.com/jpoles1/gopherbadger' target='_blank'>![gopherbadger-tag-do-not-edit](https://img.shields.io/badge/Go%20Coverage-80%25-brightgreen.svg?longCache=true&style=flat)</a>
 ===============
 This package helps execute trade/orders against DVChains websocket API in golang!
 
@@ -24,7 +24,7 @@ import (
 )
 
 func main() {
-	// DVOTC_WS_URL = "sandbox.trade.dvchain.co" || "trade.dvchain.co"
+	// DVOTC_WS_URL = "wss://sandbox.trade.dvchain.co/websocket" || "wss://trade.dvchain.co/websocket"
 	// YOUR_API_KEY = "4f8f48ff-3135-422c-9ce7-1cc5a31a72d8"
 	// YOUR_API_SECRET = "n43n2423423nm4b4b34n32423"
 
