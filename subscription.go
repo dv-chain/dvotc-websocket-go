@@ -11,9 +11,14 @@ type Subscription[T any] struct {
 	isClosed bool
 	topic    string
 	event    string
+	chanIdx  int
 }
 
 func (s *Subscription[_]) StopConsuming() error {
+	// right now only levels allows broadcast
+	if s.event == "levels" {
+		return cleanupChannelForSymbol(s.event, s.topic, s.chanIdx)
+	}
 	if s.isClosed {
 		return ErrSubscriptionAlreadyClosed
 	}
