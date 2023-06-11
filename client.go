@@ -150,7 +150,7 @@ func (dvotc *DVOTCClient) getConnOrReuse() (*websocket.Conn, error) {
 	return c, nil
 }
 
-func (dvotc *DVOTCClient) readMessageLoop() error {
+func (dvotc *DVOTCClient) readMessageLoop() {
 	for {
 		resp := Payload{}
 		if err := dvotc.wsClient.ReadJSON(&resp); err != nil {
@@ -158,17 +158,17 @@ func (dvotc *DVOTCClient) readMessageLoop() error {
 				// server closed connection
 				log.Default().Print("server closed connection")
 			}
-			return nil
+			return
 		}
 		switch resp.Type {
 		case MessageTypeError:
-			return nil
+			return
 		case MessageTypeInfo:
 			if resp.Event == "reconnect" {
 				conn, err := dvotc.getConn()
 				if err != nil {
 					log.Println(err)
-					return nil
+					return
 				}
 				reSubscribeToTopics(conn)
 				dvotc.wsClient = conn
@@ -178,7 +178,8 @@ func (dvotc *DVOTCClient) readMessageLoop() error {
 
 		levelData := LevelData{}
 		if err := json.Unmarshal(resp.Data, &levelData); err != nil {
-			return err
+			log.Println(err)
+			return
 		}
 		dispatchLevelData(resp.Event, resp.Topic, levelData)
 	}
