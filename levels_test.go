@@ -27,7 +27,11 @@ func TestListLevels(t *testing.T) {
 	var i int = 0
 	var levelData []proto.ClientMessage_LevelData
 	for i < 5 {
-		pp := p
+		pp := proto.ClientMessage{
+			Type:  proto.Types_subscribe,
+			Event: "levels",
+			Topic: "BTC/USD",
+		}
 		// data := proto.ClientMessage_LevelData{
 		// 	LevelData: &proto.LevelData{
 		// 		LastUpdate: faker.UnixTime(),
@@ -66,7 +70,7 @@ func TestListLevels(t *testing.T) {
 	require.NoError(t, err)
 
 	wsServer.rrBinaryChan <- [2]*proto.ClientMessage{&p, respData[0]}
-	d := <-sub.Data
+	var d proto.LevelData = <-sub.Data
 	require.Len(t, levelData[0].LevelData.Levels, len(d.Levels))
 	for i := 0; i < len(d.Levels)-1; i++ {
 		require.EqualValues(t, levelData[0].LevelData.Levels[i].SellPrice, d.Levels[i].SellPrice)

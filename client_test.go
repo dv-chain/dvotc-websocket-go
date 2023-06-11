@@ -16,9 +16,9 @@ import (
 	"github.com/dv-chain/dvotc-websocket-go/proto"
 	"github.com/fasthttp/websocket"
 	"github.com/go-faker/faker/v4"
-	gproto "github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	gproto "google.golang.org/protobuf/proto"
 )
 
 func Verify(msg, key []byte, hash string) (bool, error) {

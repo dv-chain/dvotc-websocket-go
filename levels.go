@@ -4,8 +4,8 @@ import (
 	"log"
 
 	"github.com/dv-chain/dvotc-websocket-go/proto"
-	gproto "github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
+	gproto "google.golang.org/protobuf/proto"
 )
 
 type LevelData struct {

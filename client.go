@@ -17,7 +17,7 @@ import (
 	"github.com/avast/retry-go/v4"
 	"github.com/dv-chain/dvotc-websocket-go/proto"
 	"github.com/fasthttp/websocket"
-	gproto "github.com/golang/protobuf/proto"
+	gproto "google.golang.org/protobuf/proto"
 )
 
 var (
