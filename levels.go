@@ -1,5 +1,13 @@
 package dvotcWS
 
+import (
+	"log"
+
+	"github.com/dv-chain/dvotc-websocket-go/proto"
+	gproto "github.com/golang/protobuf/proto"
+	"github.com/gorilla/websocket"
+)
+
 type LevelData struct {
 	Levels     []Level `json:"levels"`
 	LastUpdate int64   `json:"lastUpdate"`
@@ -13,9 +21,9 @@ type Level struct {
 	MaxQuantity float64 `json:"maxQuantity"`
 }
 
-func (dvotc *DVOTCClient) SubscribeLevels(symbol string) (*Subscription[LevelData], error) {
-	sub := &Subscription[LevelData]{
-		Data:    make(chan LevelData),
+func (dvotc *DVOTCClient) SubscribeLevels(symbol string) (*Subscription[proto.LevelData], error) {
+	sub := &Subscription[proto.LevelData]{
+		Data:    make(chan proto.LevelData),
 		done:    make(chan struct{}),
 		topic:   symbol,
 		event:   "levels",
@@ -24,6 +32,7 @@ func (dvotc *DVOTCClient) SubscribeLevels(symbol string) (*Subscription[LevelDat
 	}
 
 	if chanIdx, ok := checkConnExistAndReturnIdx(&dvotc.safeChanStore, sub.event, sub.topic, sub.Data); ok {
+		log.Println("reusing message")
 		// just add a new channel to list to listen to subscriptions
 		sub.chanIdx = chanIdx
 		return sub, nil
@@ -33,14 +42,19 @@ func (dvotc *DVOTCClient) SubscribeLevels(symbol string) (*Subscription[LevelDat
 	if err != nil {
 		return nil, err
 	}
-	payload := Payload{
-		Type:  MessageTypeSubscribe,
+	payload := &proto.ClientMessage{
+		Type:  proto.Types_subscribe,
 		Event: "levels",
 		Topic: symbol,
 	}
 
-	err = conn.WriteJSON(payload)
+	data, err := gproto.Marshal(payload)
 	if err != nil {
+		return nil, err
+	}
+
+	log.Println("writing message")
+	if err := conn.WriteMessage(websocket.BinaryMessage, data); err != nil {
 		return nil, err
 	}
 

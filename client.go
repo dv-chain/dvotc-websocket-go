@@ -15,7 +15,9 @@ import (
 	"time"
 
 	"github.com/avast/retry-go/v4"
+	"github.com/dv-chain/dvotc-websocket-go/proto"
 	"github.com/fasthttp/websocket"
+	gproto "github.com/golang/protobuf/proto"
 )
 
 var (
@@ -36,9 +38,10 @@ const (
 )
 
 type DVOTCClient struct {
-	wsURL     string
-	apiSecret string
-	apiKey    string
+	wsURL       string
+	apiSecret   string
+	apiKey      string
+	wsBinaryUrl string
 
 	requestID int
 
@@ -57,13 +60,22 @@ type Payload struct {
 	Data  json.RawMessage `json:"data,omitempty"`
 }
 
+var (
+	// wsTextBaseURL   = "wss://sandbox.trade.dvchain.co/websocket"
+	wsBinaryBaseURL = "wss://sandbox.trade.dvchain.co/ws"
+)
+
 func NewDVOTCClient(wsURL, apiKey, apiSecret string) *DVOTCClient {
 	return &DVOTCClient{
-		wsURL:     wsURL,
-		apiKey:    apiKey,
-		apiSecret: apiSecret,
-		requestID: 10,
+		wsURL:       wsURL,
+		apiKey:      apiKey,
+		wsBinaryUrl: wsBinaryBaseURL,
+		apiSecret:   apiSecret,
+		requestID:   10,
 	}
+}
+func (dvotc *DVOTCClient) WithWsBinaryUrl(url string) {
+	dvotc.wsBinaryUrl = url
 }
 
 func (dvotc *DVOTCClient) retryConnWithPayload(payload Payload) (conn *websocket.Conn, err error) {
@@ -133,7 +145,7 @@ func (dvotc *DVOTCClient) getConnOrReuse() (*websocket.Conn, error) {
 	}
 
 	signature := base64.StdEncoding.EncodeToString(h.Sum(nil))
-	u, err := url.Parse(dvotc.wsURL)
+	u, err := url.Parse(dvotc.wsBinaryUrl)
 	if err != nil {
 		return nil, err
 	}
@@ -155,19 +167,26 @@ func (dvotc *DVOTCClient) getConnOrReuse() (*websocket.Conn, error) {
 
 func (dvotc *DVOTCClient) readMessageLoop() {
 	for {
-		resp := Payload{}
-		if err := dvotc.wsClient.ReadJSON(&resp); err != nil {
+		_, bytes, err := dvotc.wsClient.ReadMessage()
+		if err != nil {
 			if !websocket.IsUnexpectedCloseError(err, websocket.CloseAbnormalClosure) {
 				// server closed connection
-				log.Default().Print("server closed connection")
+				log.Print("server closed connection")
 			}
 			return
 		}
-		switch resp.Type {
-		case MessageTypeError:
+
+		res := &proto.ClientMessage{}
+		if err := gproto.Unmarshal(bytes, res); err != nil {
+			log.Print("error decoding")
 			return
-		case MessageTypeInfo:
-			if resp.Event == "reconnect" {
+		}
+
+		switch res.GetType() {
+		case proto.Types_error:
+			return
+		case proto.Types_info:
+			if res.GetEvent() == "reconnect" {
 				conn, err := dvotc.getConn()
 				if err != nil {
 					log.Println(err)
@@ -175,16 +194,17 @@ func (dvotc *DVOTCClient) readMessageLoop() {
 				}
 				reSubscribeToTopics(conn, &dvotc.safeChanStore, &dvotc.chanMutex)
 				dvotc.wsClient = conn
+				continue
 			}
-			continue
+			log.Printf("invalid event type from info topic: (%s)", res.GetEvent())
 		}
 
-		levelData := LevelData{}
-		if err := json.Unmarshal(resp.Data, &levelData); err != nil {
-			log.Println(err)
+		levelData := res.GetLevelData()
+		if levelData == nil {
+			log.Print("no level data")
 			return
 		}
-		dispatchLevelData(&dvotc.safeChanStore, resp.Event, resp.Topic, levelData)
+		dispatchLevelData(&dvotc.safeChanStore, res.GetEvent(), res.GetTopic(), *levelData)
 	}
 }
 
@@ -229,26 +249,32 @@ func reSubscribeToTopics(conn *websocket.Conn, mutextConn *sync.Map, mutex *sync
 	mutextConn.Range(func(k, value any) bool {
 		keys := strings.Split(k.(string), ":")
 		topic, event := keys[0], keys[1]
-		payload := Payload{
-			Type:  MessageTypeSubscribe,
+		payload := &proto.ClientMessage{
+			Type:  proto.Types_subscribe,
 			Event: event,
 			Topic: topic,
 		}
-		err := conn.WriteJSON(payload)
+
+		data, err := gproto.Marshal(payload)
 		if err != nil {
+			log.Fatal(err)
+		}
+
+		log.Println("writing message from reconnect")
+		if err := conn.WriteMessage(websocket.BinaryMessage, data); err != nil {
 			log.Fatal(err)
 		}
 		return true
 	})
 }
 
-func dispatchLevelData(safeChanStore *sync.Map, event, topic string, data LevelData) {
+func dispatchLevelData(safeChanStore *sync.Map, event, topic string, data proto.LevelData) {
 	key := fmt.Sprintf("%s:%s", topic, event)
 	v, ok := safeChanStore.Load(key)
 	if !ok {
 		log.Fatalf("failed to dispatch level data no channel found %s", key)
 	}
-	channels, ok := v.([]chan LevelData)
+	channels, ok := v.([]chan proto.LevelData)
 	if !ok {
 		log.Fatalf("casting to type channel failed")
 	}
@@ -259,12 +285,12 @@ func dispatchLevelData(safeChanStore *sync.Map, event, topic string, data LevelD
 	}
 }
 
-func checkConnExistAndReturnIdx(safeChanStore *sync.Map, event, topic string, channel chan LevelData) (int, bool) {
+func checkConnExistAndReturnIdx(safeChanStore *sync.Map, event, topic string, channel chan proto.LevelData) (int, bool) {
 	idx := 0
 	key := fmt.Sprintf("%s:%s", topic, event)
 	v, ok := safeChanStore.Load(key)
 	if ok {
-		channels, ok := v.([]chan LevelData)
+		channels, ok := v.([]chan proto.LevelData)
 		if !ok {
 			log.Fatalf("casting to type channel failed")
 		}
@@ -272,7 +298,7 @@ func checkConnExistAndReturnIdx(safeChanStore *sync.Map, event, topic string, ch
 		channels = append(channels, channel)
 		safeChanStore.Store(key, channels)
 	} else {
-		safeChanStore.Store(key, []chan LevelData{channel})
+		safeChanStore.Store(key, []chan proto.LevelData{channel})
 	}
 	return idx, ok
 }
@@ -281,9 +307,10 @@ func cleanupChannelForSymbol(safeChanStore *sync.Map, mutex *sync.RWMutex, event
 	mutex.Lock()
 	defer mutex.Unlock()
 	key := fmt.Sprintf("%s:%s", topic, event)
+	log.Println("closing channel for topic and id ", key, channelIdx)
 	v, ok := safeChanStore.Load(key)
 	if ok {
-		channels, ok := v.([]chan LevelData)
+		channels, ok := v.([]chan proto.LevelData)
 		if !ok {
 			log.Fatalf("casting to type channel failed")
 		}
