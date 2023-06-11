@@ -43,6 +43,9 @@ type DVOTCClient struct {
 	requestID int
 
 	wsClient *websocket.Conn
+	/* storing all channels to dispatch data */
+	safeChanStore sync.Map
+	chanMutex     sync.RWMutex
 
 	mu sync.Mutex
 }
@@ -170,7 +173,7 @@ func (dvotc *DVOTCClient) readMessageLoop() {
 					log.Println(err)
 					return
 				}
-				reSubscribeToTopics(conn)
+				reSubscribeToTopics(conn, &dvotc.safeChanStore, &dvotc.chanMutex)
 				dvotc.wsClient = conn
 			}
 			continue
@@ -181,7 +184,7 @@ func (dvotc *DVOTCClient) readMessageLoop() {
 			log.Println(err)
 			return
 		}
-		dispatchLevelData(resp.Event, resp.Topic, levelData)
+		dispatchLevelData(&dvotc.safeChanStore, resp.Event, resp.Topic, levelData)
 	}
 }
 
@@ -220,10 +223,7 @@ func (dvotc *DVOTCClient) Ping() error {
 	return nil
 }
 
-var mutextConn = sync.Map{}
-var mutex = &sync.RWMutex{}
-
-func reSubscribeToTopics(conn *websocket.Conn) {
+func reSubscribeToTopics(conn *websocket.Conn, mutextConn *sync.Map, mutex *sync.RWMutex) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	mutextConn.Range(func(k, value any) bool {
@@ -242,9 +242,9 @@ func reSubscribeToTopics(conn *websocket.Conn) {
 	})
 }
 
-func dispatchLevelData(event, topic string, data LevelData) {
+func dispatchLevelData(safeChanStore *sync.Map, event, topic string, data LevelData) {
 	key := fmt.Sprintf("%s:%s", topic, event)
-	v, ok := mutextConn.Load(key)
+	v, ok := safeChanStore.Load(key)
 	if !ok {
 		log.Fatalf("failed to dispatch level data no channel found %s", key)
 	}
@@ -259,10 +259,10 @@ func dispatchLevelData(event, topic string, data LevelData) {
 	}
 }
 
-func checkConnExistAndReturnIdx(event, topic string, channel chan LevelData) (int, bool) {
+func checkConnExistAndReturnIdx(safeChanStore *sync.Map, event, topic string, channel chan LevelData) (int, bool) {
 	idx := 0
 	key := fmt.Sprintf("%s:%s", topic, event)
-	v, ok := mutextConn.Load(key)
+	v, ok := safeChanStore.Load(key)
 	if ok {
 		channels, ok := v.([]chan LevelData)
 		if !ok {
@@ -270,18 +270,18 @@ func checkConnExistAndReturnIdx(event, topic string, channel chan LevelData) (in
 		}
 		idx = len(channels)
 		channels = append(channels, channel)
-		mutextConn.Store(key, channels)
+		safeChanStore.Store(key, channels)
 	} else {
-		mutextConn.Store(key, []chan LevelData{channel})
+		safeChanStore.Store(key, []chan LevelData{channel})
 	}
 	return idx, ok
 }
 
-func cleanupChannelForSymbol(event, topic string, channelIdx int) error {
+func cleanupChannelForSymbol(safeChanStore *sync.Map, mutex *sync.RWMutex, event, topic string, channelIdx int) error {
 	mutex.Lock()
 	defer mutex.Unlock()
 	key := fmt.Sprintf("%s:%s", topic, event)
-	v, ok := mutextConn.Load(key)
+	v, ok := safeChanStore.Load(key)
 	if ok {
 		channels, ok := v.([]chan LevelData)
 		if !ok {
@@ -295,7 +295,7 @@ func cleanupChannelForSymbol(event, topic string, channelIdx int) error {
 		}
 		close(channels[channelIdx])
 		channels[channelIdx] = nil
-		mutextConn.Store(key, channels)
+		safeChanStore.Store(key, channels)
 	}
 	return nil
 }

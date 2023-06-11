@@ -20,9 +20,10 @@ func (dvotc *DVOTCClient) SubscribeLevels(symbol string) (*Subscription[LevelDat
 		topic:   symbol,
 		event:   "levels",
 		chanIdx: 0,
+		dvotc:   dvotc,
 	}
 
-	if chanIdx, ok := checkConnExistAndReturnIdx(sub.event, sub.topic, sub.Data); ok {
+	if chanIdx, ok := checkConnExistAndReturnIdx(&dvotc.safeChanStore, sub.event, sub.topic, sub.Data); ok {
 		// just add a new channel to list to listen to subscriptions
 		sub.chanIdx = chanIdx
 		return sub, nil
