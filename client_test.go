@@ -247,7 +247,11 @@ func (e *echoV2WebsocketServer) handler(w http.ResponseWriter, req *http.Request
 func (e *echoV2WebsocketServer) StopServer() error {
 	log.Println("stopping test websocket server")
 	e.srv.Close()
-	close(e.rrChan)
-	close(e.rrBinaryChan)
+	if e.rrChan != nil {
+		close(e.rrChan)
+	}
+	if e.rrBinaryChan != nil {
+		close(e.rrBinaryChan)
+	}
 	return e.conn.Close()
 }
