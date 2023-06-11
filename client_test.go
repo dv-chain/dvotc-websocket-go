@@ -35,8 +35,8 @@ func Verify(msg, key []byte, hash string) (bool, error) {
 func TestSettingUpConnectionAndValidatingSecret(t *testing.T) {
 	e := &echoWebsocketServer{
 		t:        t,
-		request:  []byte(`{"type": "ping-pong", "topic": "Topiccs", "event": "10"}`),
-		response: [][]byte{[]byte(`{"type": "ping-pong", "topic": "Topiccs", "event": "10"}`)},
+		request:  []byte(`{"type": "ping-pong", "topic": "ping-pong", "event": "10"}`),
+		response: [][]byte{[]byte(`{"type": "ping-pong", "topic": "ping-pong", "event": "10"}`)},
 	}
 	url := setupTestWebsocketServer(e)
 
