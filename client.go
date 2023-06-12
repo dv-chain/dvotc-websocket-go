@@ -88,7 +88,7 @@ func (dvotc *DVOTCClient) retryConnWithPayload(payload Payload) (conn *websocket
 
 func (dvotc *DVOTCClient) getConn() (*websocket.Conn, error) {
 	// need it in milliseconds
-	ts := time.Now().Unix()
+	ts := time.Now().UnixMilli()
 	var timeWindow int64 = 20000
 
 	msg := fmt.Sprintf("%s%d%d", dvotc.apiKey, ts, timeWindow)
@@ -122,7 +122,7 @@ func (dvotc *DVOTCClient) getConnOrReuse() (*websocket.Conn, error) {
 		return dvotc.wsClient, nil
 	}
 	// need it in milliseconds
-	ts := time.Now().Unix()
+	ts := time.Now().UnixMilli()
 	var timeWindow int64 = 20000
 
 	msg := fmt.Sprintf("%s%d%d", dvotc.apiKey, ts, timeWindow)
