@@ -100,7 +100,7 @@ func (dvotc *DVOTCClient) retryConnWithPayload(payload Payload) (conn *websocket
 
 func (dvotc *DVOTCClient) getConn() (*websocket.Conn, error) {
 	// need it in milliseconds
-	ts := time.Now().Unix()
+	ts := time.Now().UnixMilli()
 	var timeWindow int64 = 20000
 
 	msg := fmt.Sprintf("%s%d%d", dvotc.apiKey, ts, timeWindow)
@@ -134,7 +134,7 @@ func (dvotc *DVOTCClient) getConnOrReuse() (*websocket.Conn, error) {
 		return dvotc.wsClient, nil
 	}
 	// need it in milliseconds
-	ts := time.Now().Unix()
+	ts := time.Now().UnixMilli()
 	var timeWindow int64 = 20000
 
 	msg := fmt.Sprintf("%s%d%d", dvotc.apiKey, ts, timeWindow)
@@ -145,7 +145,7 @@ func (dvotc *DVOTCClient) getConnOrReuse() (*websocket.Conn, error) {
 	}
 
 	signature := base64.StdEncoding.EncodeToString(h.Sum(nil))
-	u, err := url.Parse(dvotc.wsBinaryUrl)
+	u, err := url.Parse(dvotc.wsURL)
 	if err != nil {
 		return nil, err
 	}
@@ -299,6 +299,7 @@ func checkConnExistAndReturnIdx(safeChanStore *sync.Map, event, topic string, ch
 		safeChanStore.Store(key, channels)
 	} else {
 		safeChanStore.Store(key, []chan proto.LevelData{channel})
+
 	}
 	return idx, ok
 }

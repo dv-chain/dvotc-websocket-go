@@ -32,7 +32,6 @@ func (dvotc *DVOTCClient) SubscribeLevels(symbol string) (*Subscription[proto.Le
 	}
 
 	if chanIdx, ok := checkConnExistAndReturnIdx(&dvotc.safeChanStore, sub.event, sub.topic, sub.Data); ok {
-		log.Println("reusing message")
 		// just add a new channel to list to listen to subscriptions
 		sub.chanIdx = chanIdx
 		return sub, nil
