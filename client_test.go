@@ -35,8 +35,8 @@ func Verify(msg, key []byte, hash string) (bool, error) {
 func TestSettingUpConnectionAndValidatingSecret(t *testing.T) {
 	e := &echoWebsocketServer{
 		t:        t,
-		request:  []byte(`{"type": "ping-pong", "topic": "Topiccs", "event": "10"}`),
-		response: [][]byte{[]byte(`{"type": "ping-pong", "topic": "Topiccs", "event": "10"}`)},
+		request:  []byte(`{"type": "ping-pong", "topic": "ping-pong", "event": "10"}`),
+		response: [][]byte{[]byte(`{"type": "ping-pong", "topic": "ping-pong", "event": "10"}`)},
 	}
 	url := setupTestWebsocketServer(e)
 
@@ -170,8 +170,8 @@ func (e *echoV2WebsocketServer) handler(w http.ResponseWriter, req *http.Request
 	count := 1
 	for rr := range e.rrChan {
 		req, res := rr[0], rr[1]
-		fmt.Println("writing count ", count)
-		fmt.Println(string(req), string(res))
+		log.Println("writing count ", count)
+		log.Println(string(req), string(res))
 		if len(req) > 0 {
 			_, p, err := conn.ReadMessage()
 			if err != nil {
@@ -190,7 +190,7 @@ func (e *echoV2WebsocketServer) handler(w http.ResponseWriter, req *http.Request
 			}
 
 			if strings.Contains(string(res), "reconnect") {
-				fmt.Println("server shutting down due to reconnect")
+				log.Println("server shutting down due to reconnect")
 				return
 			}
 		}
@@ -201,5 +201,6 @@ func (e *echoV2WebsocketServer) handler(w http.ResponseWriter, req *http.Request
 func (e *echoV2WebsocketServer) StopServer() error {
 	fmt.Println("end")
 	e.srv.Close()
+	close(e.rrChan)
 	return e.conn.Close()
 }
