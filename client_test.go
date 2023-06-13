@@ -45,7 +45,7 @@ func TestSettingUpConnectionAndValidatingSecret(t *testing.T) {
 	apiKey := faker.UUIDHyphenated()
 	apiSecret := "das87d8sa7d98a7s89dhb"
 
-	client := dvotcWS.NewDVOTCClient(url+"/websocket", apiKey, apiSecret)
+	client := dvotcWS.NewDVOTCClient(url, apiKey, apiSecret)
 	err := client.Ping()
 	assert.NoError(t, err)
 

@@ -45,7 +45,7 @@ func TestListLimitsBalances(t *testing.T) {
 		},
 	)
 
-	client := dvotcWS.NewDVOTCClient(url+"/websocket", "123", "321")
+	client := dvotcWS.NewDVOTCClient(url, "123", "321")
 	assets, err := client.ListLimitsBalances()
 	assert.NoError(t, err)
 	assert.Len(t, assets.Assets, 5)
@@ -60,7 +60,7 @@ func TestListLimitsBalances_Error(t *testing.T) {
 		},
 	)
 
-	client := dvotcWS.NewDVOTCClient(url+"/websocket", "123", "321")
+	client := dvotcWS.NewDVOTCClient(url, "123", "321")
 	symbols, err := client.ListAvailableSymbols()
 	assert.EqualError(t, err, `{"message": "internal server error"}`)
 	assert.Len(t, symbols, 0)

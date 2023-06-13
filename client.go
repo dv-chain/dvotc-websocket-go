@@ -38,10 +38,9 @@ const (
 )
 
 type DVOTCClient struct {
-	wsURL       string
-	apiSecret   string
-	apiKey      string
-	wsBinaryUrl string
+	wsURL     string
+	apiSecret string
+	apiKey    string
 
 	requestID int
 
@@ -60,22 +59,13 @@ type Payload struct {
 	Data  json.RawMessage `json:"data,omitempty"`
 }
 
-var (
-	// wsTextBaseURL   = "wss://sandbox.trade.dvchain.co/websocket"
-	wsBinaryBaseURL = "wss://sandbox.trade.dvchain.co/ws"
-)
-
 func NewDVOTCClient(wsURL, apiKey, apiSecret string) *DVOTCClient {
 	return &DVOTCClient{
-		wsURL:       wsURL,
-		apiKey:      apiKey,
-		wsBinaryUrl: wsBinaryBaseURL,
-		apiSecret:   apiSecret,
-		requestID:   10,
+		wsURL:     wsURL,
+		apiKey:    apiKey,
+		apiSecret: apiSecret,
+		requestID: 10,
 	}
-}
-func (dvotc *DVOTCClient) WithWsBinaryUrl(url string) {
-	dvotc.wsBinaryUrl = url
 }
 
 func (dvotc *DVOTCClient) retryConnWithPayload(payload Payload) (conn *websocket.Conn, err error) {
@@ -111,7 +101,7 @@ func (dvotc *DVOTCClient) getConn() (*websocket.Conn, error) {
 	}
 
 	signature := base64.StdEncoding.EncodeToString(h.Sum(nil))
-	u, err := url.Parse(dvotc.wsURL)
+	u, err := url.Parse(dvotc.wsURL + "/websocket")
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +135,7 @@ func (dvotc *DVOTCClient) getConnOrReuse() (*websocket.Conn, error) {
 	}
 
 	signature := base64.StdEncoding.EncodeToString(h.Sum(nil))
-	u, err := url.Parse(dvotc.wsURL)
+	u, err := url.Parse(dvotc.wsURL + "/ws")
 	if err != nil {
 		return nil, err
 	}

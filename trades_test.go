@@ -52,7 +52,7 @@ func TestListTrades(t *testing.T) {
 		},
 	)
 
-	client := dvotcWS.NewDVOTCClient(url+"/websocket", "123", "321")
+	client := dvotcWS.NewDVOTCClient(url, "123", "321")
 	trades, err := client.ListTrades(nil, nil, nil)
 	assert.NoError(t, err)
 	assert.Len(t, trades, i)
@@ -89,7 +89,7 @@ func TestListTrades_Error(t *testing.T) {
 		},
 	)
 
-	client := dvotcWS.NewDVOTCClient(url+"/websocket", "123", "321")
+	client := dvotcWS.NewDVOTCClient(url, "123", "321")
 	trades, err := client.ListTrades(nil, nil, nil)
 	assert.EqualError(t, err, `{"message":"internal server error"}`)
 	assert.Len(t, trades, 0)

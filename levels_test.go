@@ -64,8 +64,7 @@ func TestListLevels(t *testing.T) {
 
 	url := setupTestV2WebsocketServer(wsServer)
 
-	client := dvotcWS.NewDVOTCClient(url+"/ws", "123", "321")
-	client.WithWsBinaryUrl(url + "/ws")
+	client := dvotcWS.NewDVOTCClient(url, "123", "321")
 	sub, err := client.SubscribeLevels("BTC/USD")
 	require.NoError(t, err)
 
@@ -145,7 +144,7 @@ func TestListLevels(t *testing.T) {
 
 // 	url := setupTestV2WebsocketServer(wsServer)
 
-// 	client := dvotcWS.NewDVOTCClient(url+"/websocket", "123", "321")
+// 	client := dvotcWS.NewDVOTCClient(url, "123", "321")
 // 	sub, err := client.SubscribeLevels("BTC/USD")
 // 	require.NoError(t, err)
 

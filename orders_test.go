@@ -62,7 +62,7 @@ func TestPlaceMarketOrder(t *testing.T) {
 
 		url := setupTestWebsocketServer(wsServer)
 
-		client := dvotcWS.NewDVOTCClient(url+"/websocket", "123", "321")
+		client := dvotcWS.NewDVOTCClient(url, "123", "321")
 		resp, err := client.PlaceMarketOrder(marketOrder)
 		require.NoError(t, err)
 
@@ -106,7 +106,7 @@ func TestPlaceMarketOrder(t *testing.T) {
 
 		url := setupTestWebsocketServer(wsServer)
 
-		client := dvotcWS.NewDVOTCClient(url+"/websocket", "123", "321")
+		client := dvotcWS.NewDVOTCClient(url, "123", "321")
 		resp, err := client.PlaceMarketOrder(marketOrder)
 		require.Error(t, err)
 		require.ErrorContains(t, err, "internal server error")
@@ -164,7 +164,7 @@ func TestPlaceLimitOrder(t *testing.T) {
 
 		url := setupTestWebsocketServer(wsServer)
 
-		client := dvotcWS.NewDVOTCClient(url+"/websocket", "123", "321")
+		client := dvotcWS.NewDVOTCClient(url, "123", "321")
 		resp, err := client.PlaceLimitOrder(limitOrder)
 		require.NoError(t, err)
 
@@ -207,7 +207,7 @@ func TestPlaceLimitOrder(t *testing.T) {
 
 		url := setupTestWebsocketServer(wsServer)
 
-		client := dvotcWS.NewDVOTCClient(url+"/websocket", "123", "321")
+		client := dvotcWS.NewDVOTCClient(url, "123", "321")
 		resp, err := client.PlaceLimitOrder(limitOrder)
 		require.ErrorContains(t, err, "internal server error")
 
@@ -238,7 +238,7 @@ func TestCancellingOrder(t *testing.T) {
 
 		url := setupTestWebsocketServer(wsServer)
 
-		client := dvotcWS.NewDVOTCClient(url+"/websocket", "123", "321")
+		client := dvotcWS.NewDVOTCClient(url, "123", "321")
 		err = client.CancelOrder(orderID)
 		require.NoError(t, err)
 	})
@@ -266,7 +266,7 @@ func TestCancellingOrder(t *testing.T) {
 
 		url := setupTestWebsocketServer(wsServer)
 
-		client := dvotcWS.NewDVOTCClient(url+"/websocket", "123", "321")
+		client := dvotcWS.NewDVOTCClient(url, "123", "321")
 		err = client.CancelOrder(orderID)
 		require.ErrorContains(t, err, "Failed to cancel order")
 	})
@@ -320,7 +320,7 @@ func TestSubscribeOrderChanges(t *testing.T) {
 
 	url := setupTestV2WebsocketServer(wsServer)
 
-	client := dvotcWS.NewDVOTCClient(url+"/websocket", "123", "321")
+	client := dvotcWS.NewDVOTCClient(url, "123", "321")
 	sub, err := client.SubscribeOrderChanges("#")
 	require.NoError(t, err)
 
@@ -392,7 +392,7 @@ func TestSubscribeOrderChanges_Reconnect(t *testing.T) {
 
 	url := setupTestV2WebsocketServer(wsServer)
 
-	client := dvotcWS.NewDVOTCClient(url+"/websocket", "123", "321")
+	client := dvotcWS.NewDVOTCClient(url, "123", "321")
 	sub, err := client.SubscribeOrderChanges("#")
 	require.NoError(t, err)
 
