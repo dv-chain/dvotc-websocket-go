@@ -13,8 +13,10 @@ type Level struct {
 	MaxQuantity float64 `json:"maxQuantity"`
 }
 
-func (dvotc *DVOTCClient) SubscribeLevels(symbol string) (*Subscription[LevelData], error) {
-	sub := &Subscription[LevelData]{
+type SubscribeLevelData = Subscription[LevelData]
+
+func (dvotc *DVOTCClient) SubscribeLevels(symbol string) (*SubscribeLevelData, error) {
+	sub := &SubscribeLevelData{
 		Data:    make(chan LevelData),
 		done:    make(chan struct{}),
 		topic:   symbol,
