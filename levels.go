@@ -1,8 +1,6 @@
 package dvotcWS
 
 import (
-	"log"
-
 	"github.com/dv-chain/dvotc-websocket-go/proto"
 	"github.com/gorilla/websocket"
 	gproto "google.golang.org/protobuf/proto"
@@ -21,8 +19,10 @@ type Level struct {
 	MaxQuantity float64 `json:"maxQuantity"`
 }
 
-func (dvotc *DVOTCClient) SubscribeLevels(symbol string) (*Subscription[proto.LevelData], error) {
-	sub := &Subscription[proto.LevelData]{
+type SubscribeLevelData = Subscription[proto.LevelData]
+
+func (dvotc *DVOTCClient) SubscribeLevels(symbol string) (*SubscribeLevelData, error) {
+	sub := &SubscribeLevelData{
 		Data:    make(chan proto.LevelData),
 		done:    make(chan struct{}),
 		topic:   symbol,
@@ -52,7 +52,6 @@ func (dvotc *DVOTCClient) SubscribeLevels(symbol string) (*Subscription[proto.Le
 		return nil, err
 	}
 
-	log.Println("writing message")
 	if err := conn.WriteMessage(websocket.BinaryMessage, data); err != nil {
 		return nil, err
 	}
