@@ -99,7 +99,7 @@ func (dvotc *DVOTCClient) getConn() (*websocket.Conn, error) {
 	}
 
 	signature := base64.StdEncoding.EncodeToString(h.Sum(nil))
-	u, err := url.Parse(dvotc.wsURL)
+	u, err := url.Parse(dvotc.wsURL + "/websocket")
 	if err != nil {
 		return nil, err
 	}
