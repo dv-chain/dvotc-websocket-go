@@ -24,7 +24,7 @@ import (
 )
 
 func main() {
-	// DVOTC_WS_URL = "wss://sandbox.trade.dvchain.co/websocket" || "wss://trade.dvchain.co/websocket"
+	// DVOTC_WS_URL = "wss://sandbox.trade.dvchain.co" || "wss://trade.dvchain.co"
 	// YOUR_API_KEY = "4f8f48ff-3135-422c-9ce7-1cc5a31a72d8"
 	// YOUR_API_SECRET = "n43n2423423nm4b4b34n32423"
 
