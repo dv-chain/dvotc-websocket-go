@@ -133,7 +133,7 @@ func (dvotc *DVOTCClient) getConnOrReuse() (*websocket.Conn, error) {
 	}
 
 	signature := base64.StdEncoding.EncodeToString(h.Sum(nil))
-	u, err := url.Parse(dvotc.wsURL)
+	u, err := url.Parse(dvotc.wsURL + "/websocket")
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +184,7 @@ func (dvotc *DVOTCClient) readMessageLoop() {
 			log.Println(err)
 			return
 		}
-		dispatchLevelData(&dvotc.safeChanStore, resp.Event, resp.Topic, levelData)
+		dispatchLevelData(&dvotc.safeChanStore, &dvotc.chanMutex, resp.Event, resp.Topic, levelData)
 	}
 }
 
@@ -223,10 +223,29 @@ func (dvotc *DVOTCClient) Ping() error {
 	return nil
 }
 
+func channelsEmpty[K chan LevelData](channels []K) bool {
+	if len(channels) == 0 {
+		return true
+	}
+	for _, c := range channels {
+		if c != nil {
+			return false
+		}
+	}
+	return true
+}
+
 func reSubscribeToTopics(conn *websocket.Conn, mutextConn *sync.Map, mutex *sync.RWMutex) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	mutextConn.Range(func(k, value any) bool {
+		channels, ok := value.([]chan LevelData)
+		if !ok {
+			log.Fatalf("casting to type channel failed")
+		}
+		if channelsEmpty(channels) {
+			return true
+		}
 		keys := strings.Split(k.(string), ":")
 		topic, event := keys[0], keys[1]
 		payload := Payload{
@@ -242,7 +261,9 @@ func reSubscribeToTopics(conn *websocket.Conn, mutextConn *sync.Map, mutex *sync
 	})
 }
 
-func dispatchLevelData(safeChanStore *sync.Map, event, topic string, data LevelData) {
+func dispatchLevelData(safeChanStore *sync.Map, mutex *sync.RWMutex, event, topic string, data LevelData) {
+	mutex.Lock()
+	defer mutex.Unlock()
 	key := fmt.Sprintf("%s:%s", topic, event)
 	v, ok := safeChanStore.Load(key)
 	if !ok {
@@ -259,22 +280,25 @@ func dispatchLevelData(safeChanStore *sync.Map, event, topic string, data LevelD
 	}
 }
 
-func checkConnExistAndReturnIdx(safeChanStore *sync.Map, event, topic string, channel chan LevelData) (int, bool) {
+func checkConnExistAndReturnIdx(safeChanStore *sync.Map, mutex *sync.RWMutex, event, topic string, channel chan LevelData) (int, bool) {
+	mutex.Lock()
+	defer mutex.Unlock()
 	idx := 0
 	key := fmt.Sprintf("%s:%s", topic, event)
-	v, ok := safeChanStore.Load(key)
-	if ok {
+	v, existingConnection := safeChanStore.Load(key)
+	if existingConnection {
 		channels, ok := v.([]chan LevelData)
 		if !ok {
 			log.Fatalf("casting to type channel failed")
 		}
 		idx = len(channels)
+		existingConnection = !channelsEmpty(channels)
 		channels = append(channels, channel)
 		safeChanStore.Store(key, channels)
 	} else {
 		safeChanStore.Store(key, []chan LevelData{channel})
 	}
-	return idx, ok
+	return idx, existingConnection
 }
 
 func cleanupChannelForSymbol(safeChanStore *sync.Map, mutex *sync.RWMutex, event, topic string, channelIdx int) error {
