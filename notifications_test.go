@@ -139,9 +139,10 @@ func TestLoginNotification(t *testing.T) {
 
 		// reconnect message and shut down server
 		wsServer.rrChan <- [2][]byte{nil, []byte(`{"type": "info", "event": "reconnect"}`)}
+		time.Sleep(500 * time.Millisecond)
 		assert.NoError(t, wsServer.StopServer())
 
-		// channel closed to empty message sent
+		// channel closed so empty messages are sent
 		notif = <-sub.Data
 		assert.Equal(t, dvotcWS.LoginNotification{}, notif)
 		assert.NoError(t, sub.StopConsuming())
