@@ -18,7 +18,7 @@ type Asset struct {
 }
 
 func (dvotc *DVOTCClient) ListLimitsBalances() (*AssetBalance, error) {
-	conn, err := dvotc.getConn()
+	conn, err := dvotc.getConn("/websocket")
 	if err != nil {
 		return nil, err
 	}

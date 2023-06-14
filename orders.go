@@ -60,7 +60,7 @@ type LimitOrderParams struct {
 }
 
 func (dvotc *DVOTCClient) PlaceMarketOrder(marketOrder MarketOrderParams) (*OrderStatus, error) {
-	conn, err := dvotc.getConn()
+	conn, err := dvotc.getConn("/websocket")
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +110,7 @@ func (dvotc *DVOTCClient) PlaceMarketOrder(marketOrder MarketOrderParams) (*Orde
 }
 
 func (dvotc *DVOTCClient) PlaceLimitOrder(limitOrder LimitOrderParams) (*OrderStatus, error) {
-	conn, err := dvotc.getConn()
+	conn, err := dvotc.getConn("/websocket")
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +159,7 @@ func (dvotc *DVOTCClient) PlaceLimitOrder(limitOrder LimitOrderParams) (*OrderSt
 }
 
 func (dvotc *DVOTCClient) CancelOrder(orderID string) error {
-	conn, err := dvotc.getConn()
+	conn, err := dvotc.getConn("/websocket")
 	if err != nil {
 		return err
 	}
@@ -188,7 +188,7 @@ func (dvotc *DVOTCClient) CancelOrder(orderID string) error {
 }
 
 func (dvotc *DVOTCClient) SubscribeOrderChanges(status string) (*Subscription[OrderStatus], error) {
-	conn, err := dvotc.getConn()
+	conn, err := dvotc.getConn("/websocket")
 	if err != nil {
 		return nil, err
 	}

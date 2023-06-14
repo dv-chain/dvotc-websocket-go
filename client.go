@@ -72,7 +72,7 @@ func (dvotc *DVOTCClient) retryConnWithPayload(payload Payload) (conn *websocket
 	// most default values are good enough
 	// read more https://pkg.go.dev/github.com/avast/retry-go#pkg-variables
 	err = retry.Do(func() error {
-		conn, err = dvotc.getConn()
+		conn, err = dvotc.getConn("/websocket")
 		if err != nil {
 			return err
 		}
@@ -88,7 +88,7 @@ func (dvotc *DVOTCClient) retryConnWithPayload(payload Payload) (conn *websocket
 	return
 }
 
-func (dvotc *DVOTCClient) getConn() (*websocket.Conn, error) {
+func (dvotc *DVOTCClient) getConn(path string) (*websocket.Conn, error) {
 	// need it in milliseconds
 	ts := time.Now().UnixMilli()
 	var timeWindow int64 = 20000
@@ -101,7 +101,7 @@ func (dvotc *DVOTCClient) getConn() (*websocket.Conn, error) {
 	}
 
 	signature := base64.StdEncoding.EncodeToString(h.Sum(nil))
-	u, err := url.Parse(dvotc.wsURL + "/websocket")
+	u, err := url.Parse(dvotc.wsURL + path)
 	if err != nil {
 		return nil, err
 	}
@@ -177,11 +177,12 @@ func (dvotc *DVOTCClient) readMessageLoop() {
 			return
 		case proto.Types_info:
 			if res.GetEvent() == "reconnect" {
-				conn, err := dvotc.getConn()
+				conn, err := dvotc.getConn("/ws")
 				if err != nil {
 					log.Println(err)
 					return
 				}
+				log.Printf("got reconnect message")
 				reSubscribeToTopics(conn, &dvotc.safeChanStore, &dvotc.chanMutex)
 				dvotc.wsClient = conn
 				continue
@@ -207,7 +208,7 @@ func (dvotc *DVOTCClient) getRequestID() string {
 }
 
 func (dvotc *DVOTCClient) Ping() error {
-	conn, err := dvotc.getConn()
+	conn, err := dvotc.getConn("/websocket")
 	if err != nil {
 		return err
 	}
@@ -269,7 +270,7 @@ func reSubscribeToTopics(conn *websocket.Conn, mutextConn *sync.Map, mutex *sync
 			log.Fatal(err)
 		}
 
-		log.Println("writing message from reconnect")
+		log.Println("writing message from reconnect ", payload)
 		if err := conn.WriteMessage(websocket.BinaryMessage, data); err != nil {
 			log.Fatal(err)
 		}

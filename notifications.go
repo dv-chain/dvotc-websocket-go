@@ -176,7 +176,7 @@ func SubscribeNotifications[
 		OrderNotification |
 		LimitChangedNotification,
 ](dvotc *DVOTCClient, topic string) (*Subscription[K], error) {
-	conn, err := dvotc.getConn()
+	conn, err := dvotc.getConn("/websocket")
 	if err != nil {
 		return nil, err
 	}
