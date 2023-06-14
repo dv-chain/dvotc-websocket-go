@@ -233,10 +233,29 @@ func (dvotc *DVOTCClient) Ping() error {
 	return nil
 }
 
+func channelsEmpty[K chan proto.LevelData](channels []K) bool {
+	if len(channels) == 0 {
+		return false
+	}
+	for _, c := range channels {
+		if c != nil {
+			return true
+		}
+	}
+	return false
+}
+
 func reSubscribeToTopics(conn *websocket.Conn, mutextConn *sync.Map, mutex *sync.RWMutex) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	mutextConn.Range(func(k, value any) bool {
+		channels, ok := value.([]chan proto.LevelData)
+		if !ok {
+			log.Fatalf("casting to type channel failed")
+		}
+		if channelsEmpty(channels) {
+			return true
+		}
 		keys := strings.Split(k.(string), ":")
 		topic, event := keys[0], keys[1]
 		payload := &proto.ClientMessage{
@@ -289,6 +308,7 @@ func checkConnExistAndReturnIdx(safeChanStore *sync.Map, mutex *sync.RWMutex, ev
 			log.Fatalf("casting to type channel failed")
 		}
 		idx = len(channels)
+		ok = channelsEmpty(channels)
 		channels = append(channels, channel)
 		safeChanStore.Store(key, channels)
 	} else {
