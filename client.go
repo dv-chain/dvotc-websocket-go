@@ -194,7 +194,7 @@ func (dvotc *DVOTCClient) readMessageLoop() {
 			log.Print("no level data")
 			return
 		}
-		dispatchLevelData(&dvotc.safeChanStore, res.GetEvent(), res.GetTopic(), *levelData)
+		dispatchLevelData(&dvotc.safeChanStore, &dvotc.chanMutex, res.GetEvent(), res.GetTopic(), *levelData)
 	}
 }
 
@@ -258,7 +258,9 @@ func reSubscribeToTopics(conn *websocket.Conn, mutextConn *sync.Map, mutex *sync
 	})
 }
 
-func dispatchLevelData(safeChanStore *sync.Map, event, topic string, data proto.LevelData) {
+func dispatchLevelData(safeChanStore *sync.Map, mutex *sync.RWMutex, event, topic string, data proto.LevelData) {
+	mutex.Lock()
+	defer mutex.Unlock()
 	key := fmt.Sprintf("%s:%s", topic, event)
 	v, ok := safeChanStore.Load(key)
 	if !ok {
@@ -275,7 +277,9 @@ func dispatchLevelData(safeChanStore *sync.Map, event, topic string, data proto.
 	}
 }
 
-func checkConnExistAndReturnIdx(safeChanStore *sync.Map, event, topic string, channel chan proto.LevelData) (int, bool) {
+func checkConnExistAndReturnIdx(safeChanStore *sync.Map, mutex *sync.RWMutex, event, topic string, channel chan proto.LevelData) (int, bool) {
+	mutex.Lock()
+	defer mutex.Unlock()
 	idx := 0
 	key := fmt.Sprintf("%s:%s", topic, event)
 	v, ok := safeChanStore.Load(key)
@@ -289,7 +293,6 @@ func checkConnExistAndReturnIdx(safeChanStore *sync.Map, event, topic string, ch
 		safeChanStore.Store(key, channels)
 	} else {
 		safeChanStore.Store(key, []chan proto.LevelData{channel})
-
 	}
 	return idx, ok
 }
@@ -298,7 +301,6 @@ func cleanupChannelForSymbol(safeChanStore *sync.Map, mutex *sync.RWMutex, event
 	mutex.Lock()
 	defer mutex.Unlock()
 	key := fmt.Sprintf("%s:%s", topic, event)
-	log.Println("closing channel for topic and id ", key, channelIdx)
 	v, ok := safeChanStore.Load(key)
 	if ok {
 		channels, ok := v.([]chan proto.LevelData)
