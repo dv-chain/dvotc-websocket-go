@@ -123,29 +123,7 @@ func (dvotc *DVOTCClient) getConnOrReuse() (*websocket.Conn, error) {
 	if dvotc.wsClient != nil {
 		return dvotc.wsClient, nil
 	}
-	// need it in milliseconds
-	ts := time.Now().UnixMilli()
-	var timeWindow int64 = 20000
-
-	msg := fmt.Sprintf("%s%d%d", dvotc.apiKey, ts, timeWindow)
-
-	h := hmac.New(sha256.New, []byte(dvotc.apiSecret))
-	if _, err := h.Write([]byte(msg)); err != nil {
-		return nil, err
-	}
-
-	signature := base64.StdEncoding.EncodeToString(h.Sum(nil))
-	u, err := url.Parse(dvotc.wsURL + "/ws")
-	if err != nil {
-		return nil, err
-	}
-	header := http.Header{}
-	header.Set("dv-timestamp", fmt.Sprintf("%d", ts))
-	header.Set("dv-timewindow", fmt.Sprintf("%d", timeWindow))
-	header.Set("dv-signature", signature)
-	header.Set("dv-api-key", dvotc.apiKey)
-
-	c, _, err := websocket.DefaultDialer.Dial(u.String(), header)
+	c, err := dvotc.getConn("/ws")
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +212,7 @@ func (dvotc *DVOTCClient) Ping() error {
 	return nil
 }
 
-func channelsEmpty[K chan proto.LevelData](channels []K) bool {
+func channelsEmpty(channels []chan proto.LevelData) bool {
 	if len(channels) == 0 {
 		return true
 	}

@@ -7,7 +7,9 @@ import (
 	"log"
 	"time"
 
+	"github.com/dv-chain/dvotc-websocket-go/proto"
 	"github.com/fasthttp/websocket"
+	gproto "google.golang.org/protobuf/proto"
 )
 
 type Order struct {
@@ -46,7 +48,6 @@ type MarketOrderParams struct {
 	CounterAsset string  `json:"counterAsset"`
 	Price        float64 `json:"price"`
 	Qty          float64 `json:"qty"`
-	Side         string  `json:"side"`
 	ClientTag    string  `json:"clientTag"`
 }
 
@@ -59,54 +60,132 @@ type LimitOrderParams struct {
 	ClientTag    string  `json:"clientTag"`
 }
 
-func (dvotc *DVOTCClient) PlaceMarketOrder(marketOrder MarketOrderParams) (*OrderStatus, error) {
-	conn, err := dvotc.getConn("/websocket")
+func (dvotc *DVOTCClient) PlaceMarketBuyOrder(marketOrder MarketOrderParams) (*proto.CreateOrderMessage, error) {
+	conn, err := dvotc.getConn("/ws")
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
 
-	order := &Order{
-		QuoteID:      marketOrder.QuoteID,
-		OrderType:    "market",
+	order := &proto.CreateOrderMessage{
+		QuoteId:      marketOrder.QuoteID,
+		OrderType:    proto.OrderType_MARKET,
 		Asset:        marketOrder.Asset,
 		CounterAsset: marketOrder.CounterAsset,
 		Price:        marketOrder.Price,
 		Qty:          marketOrder.Qty,
-		Side:         marketOrder.Side,
+		Side:         proto.OrderSide_Buy,
 		ClientTag:    marketOrder.ClientTag,
+		Expires:      -1,
 	}
-
-	data, err := json.Marshal(order)
-	if err != nil {
-		return nil, err
-	}
-
-	payload := Payload{
-		Type:  MessageTypeRequestResponse,
+	payload := &proto.ClientMessage{
+		Type:  proto.Types_requestresponse,
 		Event: dvotc.getRequestID(),
 		Topic: "createorder",
-		Data:  data,
+		Data: &proto.ClientMessage_CreateOrderRequest{
+			CreateOrderRequest: order,
+		},
 	}
 
-	err = conn.WriteJSON(payload)
+	data, err := gproto.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
 
-	resp := &Payload{}
-	if err := conn.ReadJSON(resp); err != nil {
-		return nil, err
-	}
-	if resp.Type == "error" {
-		return nil, fmt.Errorf("%s", string(resp.Data))
-	}
-	orderRes := OrderStatus{}
-	if err := json.Unmarshal(resp.Data, &orderRes); err != nil {
+	if err := conn.WriteMessage(websocket.BinaryMessage, data); err != nil {
 		return nil, err
 	}
 
-	return &orderRes, nil
+	_, bytes, err := conn.ReadMessage()
+	if err != nil {
+		if !websocket.IsUnexpectedCloseError(err, websocket.CloseAbnormalClosure) {
+			// server closed connection
+			log.Print("server closed connection")
+		}
+		log.Print("failed here")
+		return nil, err
+	}
+
+	res := &proto.ClientMessage{}
+	if err := gproto.Unmarshal(bytes, res); err != nil {
+		log.Print("error decoding")
+		return nil, err
+	}
+
+	if errRes := res.GetErrorMessage(); errRes != nil {
+		return nil, errors.New(errRes.Message)
+	}
+
+	resp := res.GetCreateOrderRequest()
+	if resp == nil {
+		log.Printf("get create order request %+v", res.GetErrorMessage())
+		return nil, err
+	}
+
+	return resp, nil
+}
+
+func (dvotc *DVOTCClient) PlaceMarketSellOrder(marketOrder MarketOrderParams) (*proto.CreateOrderMessage, error) {
+	conn, err := dvotc.getConn("/ws")
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	order := &proto.CreateOrderMessage{
+		QuoteId:      marketOrder.QuoteID,
+		OrderType:    proto.OrderType_MARKET,
+		Asset:        marketOrder.Asset,
+		CounterAsset: marketOrder.CounterAsset,
+		Price:        marketOrder.Price,
+		Qty:          marketOrder.Qty,
+		Side:         proto.OrderSide_Sell,
+		ClientTag:    marketOrder.ClientTag,
+		Expires:      -1,
+	}
+	payload := &proto.ClientMessage{
+		Type:  proto.Types_requestresponse,
+		Event: dvotc.getRequestID(),
+		Topic: "createorder",
+		Data: &proto.ClientMessage_CreateOrderRequest{
+			CreateOrderRequest: order,
+		},
+	}
+
+	data, err := gproto.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := conn.WriteMessage(websocket.BinaryMessage, data); err != nil {
+		return nil, err
+	}
+
+	_, bytes, err := conn.ReadMessage()
+	if err != nil {
+		if !websocket.IsUnexpectedCloseError(err, websocket.CloseAbnormalClosure) {
+			// server closed connection
+			log.Print("server closed connection")
+		}
+		return nil, err
+	}
+
+	res := &proto.ClientMessage{}
+	if err := gproto.Unmarshal(bytes, res); err != nil {
+		return nil, err
+	}
+
+	if errRes := res.GetErrorMessage(); errRes != nil {
+		return nil, errors.New(errRes.Message)
+	}
+
+	resp := res.GetCreateOrderRequest()
+	if resp == nil {
+		log.Printf("get create order request %+v", res.GetErrorMessage())
+		return nil, err
+	}
+
+	return resp, nil
 }
 
 func (dvotc *DVOTCClient) PlaceLimitOrder(limitOrder LimitOrderParams) (*OrderStatus, error) {
