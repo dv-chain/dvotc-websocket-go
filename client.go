@@ -118,32 +118,12 @@ func (dvotc *DVOTCClient) getConn() (*websocket.Conn, error) {
 }
 
 func (dvotc *DVOTCClient) getConnOrReuse() (*websocket.Conn, error) {
+	dvotc.mu.Lock()
+	defer dvotc.mu.Unlock()
 	if dvotc.wsClient != nil {
 		return dvotc.wsClient, nil
 	}
-	// need it in milliseconds
-	ts := time.Now().UnixMilli()
-	var timeWindow int64 = 20000
-
-	msg := fmt.Sprintf("%s%d%d", dvotc.apiKey, ts, timeWindow)
-
-	h := hmac.New(sha256.New, []byte(dvotc.apiSecret))
-	if _, err := h.Write([]byte(msg)); err != nil {
-		return nil, err
-	}
-
-	signature := base64.StdEncoding.EncodeToString(h.Sum(nil))
-	u, err := url.Parse(dvotc.wsURL + "/websocket")
-	if err != nil {
-		return nil, err
-	}
-	header := http.Header{}
-	header.Set("dv-timestamp", fmt.Sprintf("%d", ts))
-	header.Set("dv-timewindow", fmt.Sprintf("%d", timeWindow))
-	header.Set("dv-signature", signature)
-	header.Set("dv-api-key", dvotc.apiKey)
-
-	c, _, err := websocket.DefaultDialer.Dial(u.String(), header)
+	c, err := dvotc.getConn()
 	if err != nil {
 		return nil, err
 	}
@@ -171,6 +151,7 @@ func (dvotc *DVOTCClient) readMessageLoop() {
 				conn, err := dvotc.getConn()
 				if err != nil {
 					log.Println(err)
+					dvotc.wsClient = nil
 					return
 				}
 				reSubscribeToTopics(conn, &dvotc.safeChanStore, &dvotc.chanMutex)
