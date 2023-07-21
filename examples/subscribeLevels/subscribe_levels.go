@@ -23,8 +23,12 @@ func main() {
 	}
 
 	go func() {
-		for data := range subscription.Data {
-			quoteID := data.QuoteID
+		for {
+			data, ok := subscription.Data.Dequeue()
+			if !ok {
+				continue
+			}
+			quoteID := data.QuoteId
 			levels := data.Levels
 			fmt.Printf("quoteID: %s %+v\n", quoteID, levels)
 			for _, l := range levels {

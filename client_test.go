@@ -13,10 +13,12 @@ import (
 	"testing"
 
 	dvotcWS "github.com/dv-chain/dvotc-websocket-go"
+	"github.com/dv-chain/dvotc-websocket-go/proto"
 	"github.com/fasthttp/websocket"
 	"github.com/go-faker/faker/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	gproto "google.golang.org/protobuf/proto"
 )
 
 func Verify(msg, key []byte, hash string) (bool, error) {
@@ -43,7 +45,7 @@ func TestSettingUpConnectionAndValidatingSecret(t *testing.T) {
 	apiKey := faker.UUIDHyphenated()
 	apiSecret := "das87d8sa7d98a7s89dhb"
 
-	client := dvotcWS.NewDVOTCClient(url+"/websocket", apiKey, apiSecret)
+	client := dvotcWS.NewDVOTCClient(url, apiKey, apiSecret)
 	err := client.Ping()
 	assert.NoError(t, err)
 
@@ -151,7 +153,9 @@ type echoV2WebsocketServer struct {
 	signature  string
 	timestamp  string
 	timeWindow string
-	rrChan     chan ([2][]byte)
+
+	rrChan       chan ([2][]byte)
+	rrBinaryChan chan ([2]*proto.ClientMessage)
 }
 
 func (e *echoV2WebsocketServer) handler(w http.ResponseWriter, req *http.Request) {
@@ -168,39 +172,86 @@ func (e *echoV2WebsocketServer) handler(w http.ResponseWriter, req *http.Request
 	e.conn = conn
 
 	count := 1
-	for rr := range e.rrChan {
-		req, res := rr[0], rr[1]
-		log.Println("writing count ", count)
-		log.Println(string(req), string(res))
-		if len(req) > 0 {
-			_, p, err := conn.ReadMessage()
-			if err != nil {
-				log.Printf("cannot read message: %v", err)
-				return
-			}
-			// fmt.Println("validating ", string(req), string(p))
-			require.JSONEq(e.t, string(req), string(p))
-			// fmt.Println("after validating")
-		}
-
-		if len(res) > 0 {
-			if err := conn.WriteMessage(1, res); err != nil {
-				log.Printf("cannot wrtite message: %v", err)
-				return
+	p := req.URL.Path
+	switch p {
+	case "/websocket":
+		log.Println("got text request")
+		for rr := range e.rrChan {
+			req, res := rr[0], rr[1]
+			log.Println("writing count ", count)
+			log.Println("[REQ/RES]", string(req), string(res))
+			if len(req) > 0 {
+				_, p, err := conn.ReadMessage()
+				if err != nil {
+					log.Printf("cannot read message: %v", err)
+					return
+				}
+				require.JSONEq(e.t, string(req), string(p))
 			}
 
-			if strings.Contains(string(res), "reconnect") {
-				log.Println("server shutting down due to reconnect")
-				return
+			if len(res) > 0 {
+				if err := conn.WriteMessage(1, res); err != nil {
+					log.Printf("cannot wrtite message: %v", err)
+					return
+				}
+
+				if strings.Contains(string(res), "reconnect") {
+					log.Println("server shutting down due to reconnect")
+					return
+				}
 			}
+			count++
 		}
-		count++
+	case "/ws":
+		log.Println("got binary request")
+		for rr := range e.rrBinaryChan {
+			expectedReq, expectedRes := rr[0], rr[1]
+			log.Println("[REQ/RES]", expectedReq, expectedRes)
+			if expectedReq != nil {
+				_, p, err := conn.ReadMessage()
+				if err != nil {
+					log.Printf("cannot read message: %v", err)
+					return
+				}
+
+				actualRes := &proto.ClientMessage{}
+				if err := gproto.Unmarshal(p, actualRes); err != nil {
+					log.Printf("error decoding %v", err)
+					return
+				}
+				require.Equal(e.t, expectedReq, actualRes)
+			}
+
+			if expectedRes != nil {
+				data, err := gproto.Marshal(expectedRes)
+				if err != nil {
+					log.Println(err)
+					return
+				}
+				if err := conn.WriteMessage(websocket.BinaryMessage, data); err != nil {
+					log.Printf("cannot write message: %v", err)
+					return
+				}
+
+				if expectedRes.Type == proto.Types_info && expectedRes.Event == "reconnect" {
+					log.Println("server shutting down due to reconnect")
+					return
+				}
+			}
+			count++
+		}
 	}
+
 }
 
 func (e *echoV2WebsocketServer) StopServer() error {
-	fmt.Println("end")
+	log.Println("stopping test websocket server")
 	e.srv.Close()
-	close(e.rrChan)
+	if e.rrChan != nil {
+		close(e.rrChan)
+	}
+	if e.rrBinaryChan != nil {
+		close(e.rrBinaryChan)
+	}
 	return e.conn.Close()
 }

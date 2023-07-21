@@ -17,7 +17,7 @@ func TestListAvailableSymbols(t *testing.T) {
 		},
 	)
 
-	client := dvotcWS.NewDVOTCClient(url+"/websocket", "123", "321")
+	client := dvotcWS.NewDVOTCClient(url, "123", "321")
 	symbols, err := client.ListAvailableSymbols()
 	assert.NoError(t, err)
 	assert.Len(t, symbols, 2)
@@ -34,7 +34,7 @@ func TestListAvailableSymbols_Error(t *testing.T) {
 		},
 	)
 
-	client := dvotcWS.NewDVOTCClient(url+"/websocket", "123", "321")
+	client := dvotcWS.NewDVOTCClient(url, "123", "321")
 	symbols, err := client.ListAvailableSymbols()
 	assert.EqualError(t, err, `{"message": "internal server error"}`)
 	assert.Len(t, symbols, 0)

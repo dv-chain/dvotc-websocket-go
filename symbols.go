@@ -6,7 +6,7 @@ import (
 )
 
 func (dvotc *DVOTCClient) ListAvailableSymbols() ([]string, error) {
-	conn, err := dvotc.getConn()
+	conn, err := dvotc.getConn("/websocket")
 	if err != nil {
 		return nil, err
 	}

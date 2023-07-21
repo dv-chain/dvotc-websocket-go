@@ -15,7 +15,9 @@ import (
 	"time"
 
 	"github.com/avast/retry-go/v4"
+	"github.com/dv-chain/dvotc-websocket-go/proto"
 	"github.com/fasthttp/websocket"
+	gproto "google.golang.org/protobuf/proto"
 )
 
 var (
@@ -35,6 +37,11 @@ const (
 	MessageTypeError           MessageType = "error"
 )
 
+type tradeData struct {
+	data chan *proto.Trade
+	err  chan error
+}
+
 type DVOTCClient struct {
 	wsURL     string
 	apiSecret string
@@ -42,12 +49,13 @@ type DVOTCClient struct {
 
 	requestID int
 
-	wsClient *websocket.Conn
+	wsConnStore map[connectionTypes]*websocket.Conn
 	/* storing all channels to dispatch data */
-	safeChanStore sync.Map
-	chanMutex     sync.RWMutex
+	levelChanStore map[string][]*FIFOQueue[proto.LevelData]
+	orderChanStore map[string]tradeData
 
-	mu sync.Mutex
+	chanMutex sync.RWMutex
+	mu        sync.Mutex
 }
 
 type Payload struct {
@@ -57,12 +65,23 @@ type Payload struct {
 	Data  json.RawMessage `json:"data,omitempty"`
 }
 
+type connectionTypes int64
+
+const (
+	connectionNew connectionTypes = iota
+	connectionLevel
+	connectionOrders
+)
+
 func NewDVOTCClient(wsURL, apiKey, apiSecret string) *DVOTCClient {
 	return &DVOTCClient{
-		wsURL:     wsURL,
-		apiKey:    apiKey,
-		apiSecret: apiSecret,
-		requestID: 10,
+		wsURL:          wsURL,
+		apiKey:         apiKey,
+		apiSecret:      apiSecret,
+		wsConnStore:    make(map[connectionTypes]*websocket.Conn),
+		orderChanStore: make(map[string]tradeData),
+		levelChanStore: make(map[string][]*FIFOQueue[proto.LevelData]),
+		requestID:      10,
 	}
 }
 
@@ -70,7 +89,7 @@ func (dvotc *DVOTCClient) retryConnWithPayload(payload Payload) (conn *websocket
 	// most default values are good enough
 	// read more https://pkg.go.dev/github.com/avast/retry-go#pkg-variables
 	err = retry.Do(func() error {
-		conn, err = dvotc.getConn()
+		conn, err = dvotc.getConn("/websocket")
 		if err != nil {
 			return err
 		}
@@ -86,7 +105,7 @@ func (dvotc *DVOTCClient) retryConnWithPayload(payload Payload) (conn *websocket
 	return
 }
 
-func (dvotc *DVOTCClient) getConn() (*websocket.Conn, error) {
+func (dvotc *DVOTCClient) getConn(path string) (*websocket.Conn, error) {
 	// need it in milliseconds
 	ts := time.Now().UnixMilli()
 	var timeWindow int64 = 20000
@@ -99,7 +118,7 @@ func (dvotc *DVOTCClient) getConn() (*websocket.Conn, error) {
 	}
 
 	signature := base64.StdEncoding.EncodeToString(h.Sum(nil))
-	u, err := url.Parse(dvotc.wsURL + "/websocket")
+	u, err := url.Parse(dvotc.wsURL + path)
 	if err != nil {
 		return nil, err
 	}
@@ -117,56 +136,34 @@ func (dvotc *DVOTCClient) getConn() (*websocket.Conn, error) {
 	return c, nil
 }
 
-func (dvotc *DVOTCClient) getConnOrReuse() (*websocket.Conn, error) {
+func (dvotc *DVOTCClient) getConnOrReuse(t connectionTypes) (*websocket.Conn, error) {
 	dvotc.mu.Lock()
 	defer dvotc.mu.Unlock()
-	if dvotc.wsClient != nil {
-		return dvotc.wsClient, nil
+	conn, ok := dvotc.wsConnStore[t]
+	if ok {
+		return conn, nil
 	}
-	c, err := dvotc.getConn()
+
+	c, err := dvotc.getConn("/ws")
 	if err != nil {
 		return nil, err
 	}
+	dvotc.wsConnStore[t] = c
 
-	dvotc.wsClient = c
-	go dvotc.readMessageLoop()
+	switch t {
+	case connectionLevel:
+		go dvotc.readLevelMessageLoop(c)
+	case connectionOrders:
+		go dvotc.readOrderMessageLoop(c)
+	}
 	return c, nil
 }
 
-func (dvotc *DVOTCClient) readMessageLoop() {
-	for {
-		resp := Payload{}
-		if err := dvotc.wsClient.ReadJSON(&resp); err != nil {
-			if !websocket.IsUnexpectedCloseError(err, websocket.CloseAbnormalClosure) {
-				// server closed connection
-				log.Default().Print("server closed connection")
-			}
-			return
-		}
-		switch resp.Type {
-		case MessageTypeError:
-			return
-		case MessageTypeInfo:
-			if resp.Event == "reconnect" {
-				conn, err := dvotc.getConn()
-				if err != nil {
-					log.Println(err)
-					dvotc.wsClient = nil
-					return
-				}
-				reSubscribeToTopics(conn, &dvotc.safeChanStore, &dvotc.chanMutex)
-				dvotc.wsClient = conn
-			}
-			continue
-		}
-
-		levelData := LevelData{}
-		if err := json.Unmarshal(resp.Data, &levelData); err != nil {
-			log.Println(err)
-			return
-		}
-		dispatchLevelData(&dvotc.safeChanStore, &dvotc.chanMutex, resp.Event, resp.Topic, levelData)
-	}
+// writeBinaryMessage allows to write only one message to connection
+func (dvotc *DVOTCClient) writeBinaryMessage(conn *websocket.Conn, b []byte) error {
+	dvotc.mu.Lock()
+	defer dvotc.mu.Unlock()
+	return conn.WriteMessage(websocket.BinaryMessage, b)
 }
 
 func (dvotc *DVOTCClient) getRequestID() string {
@@ -178,7 +175,7 @@ func (dvotc *DVOTCClient) getRequestID() string {
 }
 
 func (dvotc *DVOTCClient) Ping() error {
-	conn, err := dvotc.getConn()
+	conn, err := dvotc.getConn("/websocket")
 	if err != nil {
 		return err
 	}
@@ -204,103 +201,29 @@ func (dvotc *DVOTCClient) Ping() error {
 	return nil
 }
 
-func channelsEmpty[K chan LevelData](channels []K) bool {
-	if len(channels) == 0 {
-		return true
-	}
-	for _, c := range channels {
-		if c != nil {
-			return false
-		}
-	}
-	return true
-}
-
-func reSubscribeToTopics(conn *websocket.Conn, mutextConn *sync.Map, mutex *sync.RWMutex) {
+func reSubscribeToTopics(conn *websocket.Conn, levelChanStore map[string][]*FIFOQueue[proto.LevelData], mutex *sync.RWMutex) {
 	mutex.Lock()
 	defer mutex.Unlock()
-	mutextConn.Range(func(k, value any) bool {
-		channels, ok := value.([]chan LevelData)
-		if !ok {
-			log.Fatalf("casting to type channel failed")
+	for k, v := range levelChanStore {
+		if channelsEmpty(v) {
+			continue
 		}
-		if channelsEmpty(channels) {
-			return true
-		}
-		keys := strings.Split(k.(string), ":")
+		keys := strings.Split(k, ":")
 		topic, event := keys[0], keys[1]
-		payload := Payload{
-			Type:  MessageTypeSubscribe,
+		payload := &proto.ClientMessage{
+			Type:  proto.Types_subscribe,
 			Event: event,
 			Topic: topic,
 		}
-		err := conn.WriteJSON(payload)
+
+		data, err := gproto.Marshal(payload)
 		if err != nil {
 			log.Fatal(err)
 		}
-		return true
-	})
-}
 
-func dispatchLevelData(safeChanStore *sync.Map, mutex *sync.RWMutex, event, topic string, data LevelData) {
-	mutex.Lock()
-	defer mutex.Unlock()
-	key := fmt.Sprintf("%s:%s", topic, event)
-	v, ok := safeChanStore.Load(key)
-	if !ok {
-		log.Fatalf("failed to dispatch level data no channel found %s", key)
-	}
-	channels, ok := v.([]chan LevelData)
-	if !ok {
-		log.Fatalf("casting to type channel failed")
-	}
-	for _, channel := range channels {
-		if channel != nil {
-			channel <- data
+		log.Println("writing message from reconnect ", payload)
+		if err := conn.WriteMessage(websocket.BinaryMessage, data); err != nil {
+			log.Fatal(err)
 		}
 	}
-}
-
-func checkConnExistAndReturnIdx(safeChanStore *sync.Map, mutex *sync.RWMutex, event, topic string, channel chan LevelData) (int, bool) {
-	mutex.Lock()
-	defer mutex.Unlock()
-	idx := 0
-	key := fmt.Sprintf("%s:%s", topic, event)
-	v, existingConnection := safeChanStore.Load(key)
-	if existingConnection {
-		channels, ok := v.([]chan LevelData)
-		if !ok {
-			log.Fatalf("casting to type channel failed")
-		}
-		idx = len(channels)
-		existingConnection = !channelsEmpty(channels)
-		channels = append(channels, channel)
-		safeChanStore.Store(key, channels)
-	} else {
-		safeChanStore.Store(key, []chan LevelData{channel})
-	}
-	return idx, existingConnection
-}
-
-func cleanupChannelForSymbol(safeChanStore *sync.Map, mutex *sync.RWMutex, event, topic string, channelIdx int) error {
-	mutex.Lock()
-	defer mutex.Unlock()
-	key := fmt.Sprintf("%s:%s", topic, event)
-	v, ok := safeChanStore.Load(key)
-	if ok {
-		channels, ok := v.([]chan LevelData)
-		if !ok {
-			log.Fatalf("casting to type channel failed")
-		}
-		if channelIdx > len(channels)-1 {
-			log.Fatalf("failed to cleanup channel not existent")
-		}
-		if channels[channelIdx] == nil {
-			return ErrSubscriptionAlreadyClosed
-		}
-		close(channels[channelIdx])
-		channels[channelIdx] = nil
-		safeChanStore.Store(key, channels)
-	}
-	return nil
 }

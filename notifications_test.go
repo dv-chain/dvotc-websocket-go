@@ -42,7 +42,7 @@ func TestLoginNotification(t *testing.T) {
 
 		url := setupTestV2WebsocketServer(wsServer)
 
-		client := dvotcWS.NewDVOTCClient(url+"/websocket", "123", "321")
+		client := dvotcWS.NewDVOTCClient(url, "123", "321")
 		sub, err := client.SubscribeLogin()
 		assert.NoError(t, err)
 
@@ -83,7 +83,7 @@ func TestLoginNotification(t *testing.T) {
 
 		url := setupTestV2WebsocketServer(wsServer)
 
-		client := dvotcWS.NewDVOTCClient(url+"/websocket", "123", "321")
+		client := dvotcWS.NewDVOTCClient(url, "123", "321")
 		sub, err := client.SubscribeLogin()
 		assert.NoError(t, err)
 
@@ -129,7 +129,7 @@ func TestLoginNotification(t *testing.T) {
 
 		url := setupTestV2WebsocketServer(wsServer)
 
-		client := dvotcWS.NewDVOTCClient(url+"/websocket", "123", "321")
+		client := dvotcWS.NewDVOTCClient(url, "123", "321")
 		sub, err := client.SubscribeLogin()
 		assert.NoError(t, err)
 
@@ -175,7 +175,7 @@ func TestLoginNotification(t *testing.T) {
 
 		url := setupTestV2WebsocketServer(wsServer)
 
-		client := dvotcWS.NewDVOTCClient(url+"/websocket", "123", "321")
+		client := dvotcWS.NewDVOTCClient(url, "123", "321")
 		sub, err := client.SubscribeLogin()
 		assert.NoError(t, err)
 
@@ -221,7 +221,7 @@ func TestBatchCreatedNotification(t *testing.T) {
 
 		url := setupTestV2WebsocketServer(wsServer)
 
-		client := dvotcWS.NewDVOTCClient(url+"/websocket", "123", "321")
+		client := dvotcWS.NewDVOTCClient(url, "123", "321")
 		sub, err := client.SubscribeBatchCreated()
 		assert.NoError(t, err)
 
@@ -263,7 +263,7 @@ func TestBatchSettledNotification(t *testing.T) {
 
 		url := setupTestV2WebsocketServer(wsServer)
 
-		client := dvotcWS.NewDVOTCClient(url+"/websocket", "123", "321")
+		client := dvotcWS.NewDVOTCClient(url, "123", "321")
 		sub, err := client.SubscribeBatchSettled()
 		assert.NoError(t, err)
 
@@ -305,7 +305,7 @@ func TestSettlementAddedNotification(t *testing.T) {
 
 		url := setupTestV2WebsocketServer(wsServer)
 
-		client := dvotcWS.NewDVOTCClient(url+"/websocket", "123", "321")
+		client := dvotcWS.NewDVOTCClient(url, "123", "321")
 		sub, err := client.SubscribeSettlementAdded()
 		assert.NoError(t, err)
 
@@ -347,7 +347,7 @@ func TestLimitChangedNotification(t *testing.T) {
 
 		url := setupTestV2WebsocketServer(wsServer)
 
-		client := dvotcWS.NewDVOTCClient(url+"/websocket", "123", "321")
+		client := dvotcWS.NewDVOTCClient(url, "123", "321")
 		sub, err := client.SubscribeLimitChanged()
 		assert.NoError(t, err)
 

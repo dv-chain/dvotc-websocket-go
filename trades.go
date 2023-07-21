@@ -41,7 +41,7 @@ type ListTradesPayload struct {
 }
 
 func (dvotc *DVOTCClient) ListTrades(IDs []string, tradeKeys []string, clientTags []string) ([]Trade, error) {
-	conn, err := dvotc.getConn()
+	conn, err := dvotc.getConn("/websocket")
 	if err != nil {
 		return nil, err
 	}
