@@ -100,7 +100,7 @@ func TestPlaceMarketOrder(t *testing.T) {
 
 		wsServer := &echoWebsocketServer{
 			t:        t,
-			response: [][]byte{[]byte(`{"type": "error", "topic": "availablesymbols", "event": "10", "data": {"message": "internal server error"}}`)},
+			response: [][]byte{[]byte(`{"type": "error", "topic": "createorder", "event": "10", "data": {"message": "internal server error"}}`)},
 			request:  reqBytes,
 		}
 
@@ -201,7 +201,7 @@ func TestPlaceLimitOrder(t *testing.T) {
 
 		wsServer := &echoWebsocketServer{
 			t:        t,
-			response: [][]byte{[]byte(`{"type": "error", "topic": "availablesymbols", "event": "10", "data": {"message": "internal server error"}}`)},
+			response: [][]byte{[]byte(`{"type": "error", "topic": "createorder", "event": "10", "data": {"message": "internal server error"}}`)},
 			request:  reqBytes,
 		}
 

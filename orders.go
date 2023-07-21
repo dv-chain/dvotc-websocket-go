@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/fasthttp/websocket"
@@ -59,12 +60,13 @@ type LimitOrderParams struct {
 	ClientTag    string  `json:"clientTag"`
 }
 
+type OrderResponseData = Subscription[*OrderStatus]
+
 func (dvotc *DVOTCClient) PlaceMarketOrder(marketOrder MarketOrderParams) (*OrderStatus, error) {
-	conn, err := dvotc.getConn()
+	conn, err := dvotc.getConnOrReuse(connectionOrders)
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
 
 	order := &Order{
 		QuoteID:      marketOrder.QuoteID,
@@ -89,32 +91,39 @@ func (dvotc *DVOTCClient) PlaceMarketOrder(marketOrder MarketOrderParams) (*Orde
 		Data:  data,
 	}
 
-	err = conn.WriteJSON(payload)
-	if err != nil {
+	sub := &OrderResponseData{
+		Data:  make(chan *OrderStatus),
+		Error: make(chan error),
+		topic: payload.Topic,
+		event: payload.Event,
+		conn:  conn,
+	}
+
+	storeTradeAndErrorChann(dvotc.orderChanStore, &dvotc.chanMutex, sub.event, sub.topic, sub.Data, sub.Error)
+	defer func() {
+		close(sub.Data)
+		close(sub.Error)
+		cleanupTradeAndErrorChan(dvotc.orderChanStore, &dvotc.chanMutex, sub.event, sub.topic)
+	}()
+
+	if err := dvotc.writeJSONMessage(conn, payload); err != nil {
 		return nil, err
 	}
 
-	resp := &Payload{}
-	if err := conn.ReadJSON(resp); err != nil {
+	select {
+	case res := <-sub.Data:
+		return res, nil
+	case err := <-sub.Error:
 		return nil, err
 	}
-	if resp.Type == "error" {
-		return nil, fmt.Errorf("%s", string(resp.Data))
-	}
-	orderRes := OrderStatus{}
-	if err := json.Unmarshal(resp.Data, &orderRes); err != nil {
-		return nil, err
-	}
-
-	return &orderRes, nil
 }
 
 func (dvotc *DVOTCClient) PlaceLimitOrder(limitOrder LimitOrderParams) (*OrderStatus, error) {
-	conn, err := dvotc.getConn()
+	conn, err := dvotc.getConnOrReuse(connectionOrders)
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+
 	sellPriceStr := fmt.Sprintf("%g", limitOrder.LimitPrice)
 	order := Order{
 		OrderType:    "LIMIT",
@@ -130,6 +139,7 @@ func (dvotc *DVOTCClient) PlaceLimitOrder(limitOrder LimitOrderParams) (*OrderSt
 	if err != nil {
 		return nil, err
 	}
+
 	payload := Payload{
 		Type:  MessageTypeRequestResponse,
 		Event: dvotc.getRequestID(),
@@ -137,25 +147,31 @@ func (dvotc *DVOTCClient) PlaceLimitOrder(limitOrder LimitOrderParams) (*OrderSt
 		Data:  data,
 	}
 
-	err = conn.WriteJSON(payload)
-	if err != nil {
+	sub := &OrderResponseData{
+		Data:  make(chan *OrderStatus),
+		Error: make(chan error),
+		topic: payload.Topic,
+		event: payload.Event,
+		conn:  conn,
+	}
+
+	storeTradeAndErrorChann(dvotc.orderChanStore, &dvotc.chanMutex, sub.event, sub.topic, sub.Data, sub.Error)
+	defer func() {
+		close(sub.Data)
+		close(sub.Error)
+		cleanupTradeAndErrorChan(dvotc.orderChanStore, &dvotc.chanMutex, sub.event, sub.topic)
+	}()
+
+	if err := dvotc.writeJSONMessage(conn, payload); err != nil {
 		return nil, err
 	}
 
-	resp := &Payload{}
-	if err := conn.ReadJSON(resp); err != nil {
+	select {
+	case res := <-sub.Data:
+		return res, nil
+	case err := <-sub.Error:
 		return nil, err
 	}
-	if resp.Type == "error" {
-		return nil, fmt.Errorf("%s", string(resp.Data))
-	}
-
-	orderRes := OrderStatus{}
-	if err := json.Unmarshal(resp.Data, &orderRes); err != nil {
-		return nil, err
-	}
-
-	return &orderRes, nil
 }
 
 func (dvotc *DVOTCClient) CancelOrder(orderID string) error {
@@ -253,4 +269,76 @@ func (dvotc *DVOTCClient) SubscribeOrderChanges(status string) (*Subscription[Or
 	}()
 
 	return sub, nil
+}
+
+func (dvotc *DVOTCClient) readOrderMessageLoop(conn *websocket.Conn, cleanupFunc func()) {
+	for {
+		resp := Payload{}
+		if err := conn.ReadJSON(&resp); err != nil {
+			if !websocket.IsUnexpectedCloseError(err, websocket.CloseAbnormalClosure) {
+				// server closed connection
+				log.Default().Print("server closed connection")
+			}
+			if cleanupFunc != nil {
+				cleanupFunc()
+			}
+			return
+		}
+
+		// handle error
+		if resp.Type == "error" {
+			errResp := ErrorResponse{}
+			if err := json.Unmarshal(resp.Data, &errResp); err != nil {
+				dispatchTradeData(dvotc.orderChanStore, &dvotc.chanMutex, resp.Event, resp.Topic, nil, err)
+				continue
+			}
+			dispatchTradeData(dvotc.orderChanStore, &dvotc.chanMutex, resp.Event, resp.Topic, nil, errors.New(errResp.Message))
+			continue
+		}
+
+		orderStatus := OrderStatus{}
+		if err := json.Unmarshal(resp.Data, &orderStatus); err != nil {
+			return
+		}
+		dispatchTradeData(dvotc.orderChanStore, &dvotc.chanMutex, resp.Event, resp.Topic, &orderStatus, nil)
+	}
+}
+
+func dispatchTradeData(safeChanStore map[string]tradeData, mutex *sync.RWMutex, event, topic string, trade *OrderStatus, err error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	key := fmt.Sprintf("%s:%s", topic, event)
+	channels, ok := safeChanStore[key]
+	if !ok {
+		log.Panicf("key already exist for trade %s", key)
+	}
+	if err != nil {
+		channels.err <- err
+	} else {
+		channels.data <- trade
+	}
+}
+
+func storeTradeAndErrorChann(safeChanStore map[string]tradeData, mutex *sync.RWMutex, event, topic string, channel chan *OrderStatus, errChan chan error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	key := fmt.Sprintf("%s:%s", topic, event)
+	_, ok := safeChanStore[key]
+	if ok {
+		log.Panicf("key already exist for trade %s", key)
+	}
+
+	safeChanStore[key] = tradeData{
+		data: channel,
+		err:  errChan,
+	}
+}
+
+// cleanupTradeAndErrorChan remove the tradeData channels for a key
+// TODO: make this cleanup on a timer basis
+func cleanupTradeAndErrorChan(safeChanStore map[string]tradeData, mutex *sync.RWMutex, event, topic string) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	key := fmt.Sprintf("%s:%s", topic, event)
+	delete(safeChanStore, key)
 }
