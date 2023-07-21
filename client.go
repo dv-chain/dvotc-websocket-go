@@ -226,26 +226,3 @@ func reSubscribeToTopics(conn *websocket.Conn, levelChanStore map[string][]*FIFO
 		}
 	}
 }
-
-func cleanupChannelForSymbol(safeChanStore *sync.Map, mutex *sync.RWMutex, event, topic string, channelIdx int) error {
-	mutex.Lock()
-	defer mutex.Unlock()
-	key := fmt.Sprintf("%s:%s", topic, event)
-	v, ok := safeChanStore.Load(key)
-	if ok {
-		channels, ok := v.([]chan LevelData)
-		if !ok {
-			log.Fatalf("casting to type channel failed")
-		}
-		if channelIdx > len(channels)-1 {
-			log.Fatalf("failed to cleanup channel not existent")
-		}
-		if channels[channelIdx] == nil {
-			return ErrSubscriptionAlreadyClosed
-		}
-		close(channels[channelIdx])
-		channels[channelIdx] = nil
-		safeChanStore.Store(key, channels)
-	}
-	return nil
-}
