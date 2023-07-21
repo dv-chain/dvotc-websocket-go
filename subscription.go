@@ -12,8 +12,6 @@ type Subscription[T any] struct {
 	isClosed bool
 	topic    string
 	event    string
-
-	dvotc *DVOTCClient
 }
 
 func (s *Subscription[_]) StopConsuming() error {

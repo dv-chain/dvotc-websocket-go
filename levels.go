@@ -26,13 +26,10 @@ type Level struct {
 type SubscribeLevelData = Subscription[proto.LevelData]
 
 type LevelSubscription struct {
-	Data     *FIFOQueue[proto.LevelData]
-	conn     *websocket.Conn
-	done     chan struct{}
-	isClosed bool
-	topic    string
-	event    string
-	chanIdx  int
+	Data    *FIFOQueue[proto.LevelData]
+	topic   string
+	event   string
+	chanIdx int
 }
 
 func (dvotc *DVOTCClient) SubscribeLevels(symbol string) (*LevelSubscription, error) {
@@ -43,7 +40,6 @@ func (dvotc *DVOTCClient) SubscribeLevels(symbol string) (*LevelSubscription, er
 
 	sub := &LevelSubscription{
 		Data:    NewFIFOQueue[proto.LevelData](),
-		done:    make(chan struct{}),
 		topic:   symbol,
 		event:   "levels",
 		chanIdx: 0,
