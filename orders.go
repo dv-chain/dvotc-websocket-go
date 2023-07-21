@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/dv-chain/dvotc-websocket-go/proto"
@@ -60,12 +61,84 @@ type LimitOrderParams struct {
 	ClientTag    string  `json:"clientTag"`
 }
 
-func (dvotc *DVOTCClient) PlaceMarketBuyOrder(marketOrder MarketOrderParams) (*proto.CreateOrderMessage, error) {
-	conn, err := dvotc.getConn("/ws")
+func (dvotc *DVOTCClient) readOrderMessageLoop(conn *websocket.Conn) {
+	for {
+		_, bytes, err := conn.ReadMessage()
+		if err != nil {
+			if !websocket.IsUnexpectedCloseError(err, websocket.CloseAbnormalClosure) {
+				// server closed connection
+				log.Print("server closed connection")
+			}
+			log.Print("closing connection")
+			return
+		}
+
+		res := &proto.ClientMessage{}
+		if err := gproto.Unmarshal(bytes, res); err != nil {
+			log.Print("error decoding")
+			dispatchTradeData(dvotc.orderChanStore, &dvotc.chanMutex, res.GetEvent(), res.GetTopic(), nil, err)
+			continue
+		}
+
+		if errRes := res.GetErrorMessage(); errRes != nil {
+			log.Println(errRes.Message)
+			dispatchTradeData(dvotc.orderChanStore, &dvotc.chanMutex, res.GetEvent(), res.GetTopic(), nil, errors.New(errRes.Message))
+			continue
+		}
+
+		data := res.GetTradeStatusResponse()
+		if data == nil {
+			log.Print("no level data ", data)
+			dispatchTradeData(dvotc.orderChanStore, &dvotc.chanMutex, res.GetEvent(), res.GetTopic(), nil, errors.New("no valid response"))
+			continue
+		}
+		dispatchTradeData(dvotc.orderChanStore, &dvotc.chanMutex, res.GetEvent(), res.GetTopic(), data.Trades[0], nil)
+	}
+}
+
+func dispatchTradeData(safeChanStore map[string]tradeData, mutex *sync.RWMutex, event, topic string, trade *proto.Trade, err error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	key := fmt.Sprintf("%s:%s", topic, event)
+	channels, ok := safeChanStore[key]
+	if !ok {
+		log.Panicf("key already exist for trade %s", key)
+	}
+	if err != nil {
+		channels.err <- err
+	} else {
+		channels.data <- trade
+	}
+}
+
+func storeTradeAndErrorChann(safeChanStore map[string]tradeData, mutex *sync.RWMutex, event, topic string, channel chan *proto.Trade, errChan chan error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	key := fmt.Sprintf("%s:%s", topic, event)
+	_, ok := safeChanStore[key]
+	if ok {
+		log.Panicf("key already exist for trade %s", key)
+	}
+
+	safeChanStore[key] = tradeData{
+		data: channel,
+		err:  errChan,
+	}
+}
+func cleanupTradeAndErrorChan(safeChanStore map[string]tradeData, mutex *sync.RWMutex, event, topic string) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	key := fmt.Sprintf("%s:%s", topic, event)
+	delete(safeChanStore, key)
+}
+
+type OrderResponseData = Subscription[*proto.Trade]
+
+func (dvotc *DVOTCClient) PlaceMarketBuyOrder(marketOrder MarketOrderParams) (*proto.Trade, error) {
+	conn, err := dvotc.getConnOrReuse(connectionOrders)
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
 
 	order := &proto.CreateOrderMessage{
 		QuoteId:      marketOrder.QuoteID,
@@ -87,50 +160,43 @@ func (dvotc *DVOTCClient) PlaceMarketBuyOrder(marketOrder MarketOrderParams) (*p
 		},
 	}
 
+	sub := &OrderResponseData{
+		Data:  make(chan *proto.Trade),
+		Error: make(chan error),
+		topic: payload.Topic,
+		event: payload.Event,
+		conn:  conn,
+	}
+
+	storeTradeAndErrorChann(dvotc.orderChanStore, &dvotc.chanMutex, sub.event, sub.topic, sub.Data, sub.Error)
+	defer func() {
+		close(sub.Data)
+		close(sub.Error)
+		cleanupTradeAndErrorChan(dvotc.orderChanStore, &dvotc.chanMutex, sub.event, sub.topic)
+	}()
+
 	data, err := gproto.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := conn.WriteMessage(websocket.BinaryMessage, data); err != nil {
+	if err := dvotc.writeBinaryMessage(conn, data); err != nil {
 		return nil, err
 	}
 
-	_, bytes, err := conn.ReadMessage()
-	if err != nil {
-		if !websocket.IsUnexpectedCloseError(err, websocket.CloseAbnormalClosure) {
-			// server closed connection
-			log.Print("server closed connection")
-		}
-		log.Print("failed here")
+	select {
+	case res := <-sub.Data:
+		return res, nil
+	case err := <-sub.Error:
 		return nil, err
 	}
-
-	res := &proto.ClientMessage{}
-	if err := gproto.Unmarshal(bytes, res); err != nil {
-		log.Print("error decoding")
-		return nil, err
-	}
-
-	if errRes := res.GetErrorMessage(); errRes != nil {
-		return nil, errors.New(errRes.Message)
-	}
-
-	resp := res.GetCreateOrderRequest()
-	if resp == nil {
-		log.Printf("get create order request %+v", res.GetErrorMessage())
-		return nil, err
-	}
-
-	return resp, nil
 }
 
-func (dvotc *DVOTCClient) PlaceMarketSellOrder(marketOrder MarketOrderParams) (*proto.CreateOrderMessage, error) {
-	conn, err := dvotc.getConn("/ws")
+func (dvotc *DVOTCClient) PlaceMarketSellOrder(marketOrder MarketOrderParams) (*proto.Trade, error) {
+	conn, err := dvotc.getConnOrReuse(connectionOrders)
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
 
 	order := &proto.CreateOrderMessage{
 		QuoteId:      marketOrder.QuoteID,
@@ -152,40 +218,36 @@ func (dvotc *DVOTCClient) PlaceMarketSellOrder(marketOrder MarketOrderParams) (*
 		},
 	}
 
+	sub := &OrderResponseData{
+		Data:  make(chan *proto.Trade),
+		Error: make(chan error),
+		topic: payload.Topic,
+		event: payload.Event,
+		conn:  conn,
+	}
+
+	storeTradeAndErrorChann(dvotc.orderChanStore, &dvotc.chanMutex, sub.event, sub.topic, sub.Data, sub.Error)
+	defer func() {
+		close(sub.Data)
+		close(sub.Error)
+		cleanupTradeAndErrorChan(dvotc.orderChanStore, &dvotc.chanMutex, sub.event, sub.topic)
+	}()
+
 	data, err := gproto.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := conn.WriteMessage(websocket.BinaryMessage, data); err != nil {
+	if err := dvotc.writeBinaryMessage(conn, data); err != nil {
 		return nil, err
 	}
 
-	_, bytes, err := conn.ReadMessage()
-	if err != nil {
-		if !websocket.IsUnexpectedCloseError(err, websocket.CloseAbnormalClosure) {
-			// server closed connection
-			log.Print("server closed connection")
-		}
+	select {
+	case res := <-sub.Data:
+		return res, nil
+	case err := <-sub.Error:
 		return nil, err
 	}
-
-	res := &proto.ClientMessage{}
-	if err := gproto.Unmarshal(bytes, res); err != nil {
-		return nil, err
-	}
-
-	if errRes := res.GetErrorMessage(); errRes != nil {
-		return nil, errors.New(errRes.Message)
-	}
-
-	resp := res.GetCreateOrderRequest()
-	if resp == nil {
-		log.Printf("get create order request %+v", res.GetErrorMessage())
-		return nil, err
-	}
-
-	return resp, nil
 }
 
 func (dvotc *DVOTCClient) PlaceLimitOrder(limitOrder LimitOrderParams) (*OrderStatus, error) {
