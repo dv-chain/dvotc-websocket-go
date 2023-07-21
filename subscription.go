@@ -6,6 +6,7 @@ import (
 
 type Subscription[T any] struct {
 	Data     chan T
+	Error    chan error
 	conn     *websocket.Conn
 	done     chan struct{}
 	isClosed bool
@@ -17,10 +18,6 @@ type Subscription[T any] struct {
 }
 
 func (s *Subscription[_]) StopConsuming() error {
-	// right now only levels allows broadcast
-	if s.event == "levels" {
-		return cleanupChannelForSymbol(&s.dvotc.safeChanStore, &s.dvotc.chanMutex, s.event, s.topic, s.chanIdx)
-	}
 	if s.isClosed {
 		return ErrSubscriptionAlreadyClosed
 	}
