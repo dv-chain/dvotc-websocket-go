@@ -96,7 +96,7 @@ func (dvotc *DVOTCClient) readOrderMessageLoop(conn *websocket.Conn) {
 	}
 }
 
-func dispatchTradeData(safeChanStore map[string]tradeData, mutex *sync.RWMutex, event, topic string, trade *proto.Trade, err error) {
+func dispatchTradeData(safeChanStore map[string]tradeData, mutex *sync.RWMutex, event, topic string, trade *TradeProto, err error) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	key := fmt.Sprintf("%s:%s", topic, event)
@@ -111,7 +111,7 @@ func dispatchTradeData(safeChanStore map[string]tradeData, mutex *sync.RWMutex, 
 	}
 }
 
-func storeTradeAndErrorChann(safeChanStore map[string]tradeData, mutex *sync.RWMutex, event, topic string, channel chan *proto.Trade, errChan chan error) {
+func storeTradeAndErrorChann(safeChanStore map[string]tradeData, mutex *sync.RWMutex, event, topic string, channel chan *TradeProto, errChan chan error) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	key := fmt.Sprintf("%s:%s", topic, event)
@@ -132,9 +132,9 @@ func cleanupTradeAndErrorChan(safeChanStore map[string]tradeData, mutex *sync.RW
 	delete(safeChanStore, key)
 }
 
-type OrderResponseData = Subscription[*proto.Trade]
+type OrderResponseData = Subscription[*TradeProto]
 
-func (dvotc *DVOTCClient) PlaceMarketBuyOrder(marketOrder MarketOrderParams) (*proto.Trade, error) {
+func (dvotc *DVOTCClient) PlaceMarketBuyOrder(marketOrder MarketOrderParams) (*TradeProto, error) {
 	conn, err := dvotc.getConnOrReuse(connectionOrders)
 	if err != nil {
 		return nil, err
@@ -161,7 +161,7 @@ func (dvotc *DVOTCClient) PlaceMarketBuyOrder(marketOrder MarketOrderParams) (*p
 	}
 
 	sub := &OrderResponseData{
-		Data:  make(chan *proto.Trade),
+		Data:  make(chan *TradeProto),
 		Error: make(chan error),
 		topic: payload.Topic,
 		event: payload.Event,
@@ -192,7 +192,7 @@ func (dvotc *DVOTCClient) PlaceMarketBuyOrder(marketOrder MarketOrderParams) (*p
 	}
 }
 
-func (dvotc *DVOTCClient) PlaceMarketSellOrder(marketOrder MarketOrderParams) (*proto.Trade, error) {
+func (dvotc *DVOTCClient) PlaceMarketSellOrder(marketOrder MarketOrderParams) (*TradeProto, error) {
 	conn, err := dvotc.getConnOrReuse(connectionOrders)
 	if err != nil {
 		return nil, err
@@ -219,7 +219,7 @@ func (dvotc *DVOTCClient) PlaceMarketSellOrder(marketOrder MarketOrderParams) (*
 	}
 
 	sub := &OrderResponseData{
-		Data:  make(chan *proto.Trade),
+		Data:  make(chan *TradeProto),
 		Error: make(chan error),
 		topic: payload.Topic,
 		event: payload.Event,

@@ -5,7 +5,11 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/dv-chain/dvotc-websocket-go/proto"
 )
+
+type TradeProto = proto.Trade
 
 type Trade struct {
 	ID           string     `json:"_id"`

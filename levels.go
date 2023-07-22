@@ -10,20 +10,11 @@ import (
 	gproto "google.golang.org/protobuf/proto"
 )
 
-type LevelData struct {
-	Levels     []Level `json:"levels"`
-	LastUpdate int64   `json:"lastUpdate"`
-	QuoteID    string  `json:"quoteId"`
-	Market     string  `json:"market"`
-}
+type LevelData = proto.LevelData
 
-type Level struct {
-	SellPrice   float64 `json:"sellPrice"`
-	BuyPrice    float64 `json:"buyPrice"`
-	MaxQuantity float64 `json:"maxQuantity"`
-}
+type Level = proto.Level
 
-type SubscribeLevelData = Subscription[*proto.LevelData]
+type SubscribeLevelData = Subscription[*LevelData]
 
 func (dvotc *DVOTCClient) SubscribeLevels(symbol string) (*SubscribeLevelData, error) {
 	conn, err := dvotc.getConnOrReuse(connectionLevel)
@@ -32,7 +23,7 @@ func (dvotc *DVOTCClient) SubscribeLevels(symbol string) (*SubscribeLevelData, e
 	}
 
 	sub := &SubscribeLevelData{
-		Data:  make(chan *proto.LevelData, 5),
+		Data:  make(chan *LevelData, 5),
 		done:  make(chan struct{}),
 		topic: symbol,
 		event: "levels",
@@ -107,7 +98,7 @@ func (dvotc *DVOTCClient) readLevelMessageLoop(conn *websocket.Conn) {
 	}
 }
 
-func cleanupLevelChannelForSymbol(levelChanStore map[string][]chan *proto.LevelData, mutex *sync.RWMutex, event, topic string, channelIdx int) error {
+func cleanupLevelChannelForSymbol(levelChanStore map[string][]chan *LevelData, mutex *sync.RWMutex, event, topic string, channelIdx int) error {
 	mutex.Lock()
 	defer mutex.Unlock()
 	key := fmt.Sprintf("%s:%s", topic, event)
@@ -128,7 +119,7 @@ func cleanupLevelChannelForSymbol(levelChanStore map[string][]chan *proto.LevelD
 	return nil
 }
 
-func checkLevelsConnExistAndReturnIdx(levelChanStore map[string][]chan *proto.LevelData, mutex *sync.RWMutex, event, topic string, channel chan *proto.LevelData) (int, bool) {
+func checkLevelsConnExistAndReturnIdx(levelChanStore map[string][]chan *LevelData, mutex *sync.RWMutex, event, topic string, channel chan *LevelData) (int, bool) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	idx := 0
@@ -141,12 +132,12 @@ func checkLevelsConnExistAndReturnIdx(levelChanStore map[string][]chan *proto.Le
 		channels = append(channels, channel)
 		levelChanStore[key] = channels
 	} else {
-		levelChanStore[key] = []chan *proto.LevelData{channel}
+		levelChanStore[key] = []chan *LevelData{channel}
 	}
 	return idx, existingConnection
 }
 
-func dispatchLevelData(levelChanStore map[string][]chan *proto.LevelData, mutex *sync.RWMutex, event, topic string, data *proto.LevelData) {
+func dispatchLevelData(levelChanStore map[string][]chan *LevelData, mutex *sync.RWMutex, event, topic string, data *LevelData) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	key := fmt.Sprintf("%s:%s", topic, event)
@@ -166,7 +157,7 @@ func dispatchLevelData(levelChanStore map[string][]chan *proto.LevelData, mutex 
 	}
 }
 
-func channelsEmpty(channels []chan *proto.LevelData) bool {
+func channelsEmpty(channels []chan *LevelData) bool {
 	if len(channels) == 0 {
 		return true
 	}
