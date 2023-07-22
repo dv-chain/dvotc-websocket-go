@@ -12,12 +12,6 @@ import (
 )
 
 func TestListLevels(t *testing.T) {
-	// p := dvotcWS.Payload{
-	// 	Type:  "subscribe",
-	// 	Topic: "BTC/USD",
-	// 	Event: "levels",
-	// }
-
 	p := proto.ClientMessage{
 		Type:  proto.Types_subscribe,
 		Event: "levels",
@@ -33,20 +27,6 @@ func TestListLevels(t *testing.T) {
 			Event: "levels",
 			Topic: "BTC/USD",
 		}
-		// data := proto.ClientMessage_LevelData{
-		// 	LevelData: &proto.LevelData{
-		// 		LastUpdate: faker.UnixTime(),
-		// 		QuoteId:    faker.UUIDDigit(),
-		// 		Market:     faker.Currency(),
-		// 		Levels: []*proto.Level{
-		// 			{
-		// 				SellPrice:   faker.Longitude(),
-		// 				BuyPrice:    faker.Longitude(),
-		// 				MaxQuantity: faker.Longitude(),
-		// 			},
-		// 		},
-		// 	},
-		// }
 		data := proto.ClientMessage_LevelData{}
 		err := faker.FakeData(&data.LevelData, options.WithRandomMapAndSliceMaxSize(5))
 		require.NoError(t, err)
@@ -71,7 +51,7 @@ func TestListLevels(t *testing.T) {
 
 	wsServer.rrBinaryChan <- [2]*proto.ClientMessage{&p, respData[0]}
 	time.Sleep(100 * time.Millisecond)
-	d, _ := sub.Data.Dequeue()
+	d := <-sub.Data
 	require.Len(t, levelData[0].LevelData.Levels, len(d.Levels))
 	for i := 0; i < len(d.Levels)-1; i++ {
 		require.EqualValues(t, levelData[0].LevelData.Levels[i].SellPrice, d.Levels[i].SellPrice)
@@ -81,7 +61,7 @@ func TestListLevels(t *testing.T) {
 
 	wsServer.rrBinaryChan <- [2]*proto.ClientMessage{nil, respData[1]}
 	time.Sleep(100 * time.Millisecond)
-	d, _ = sub.Data.Dequeue()
+	d = <-sub.Data
 	require.Len(t, levelData[1].LevelData.Levels, len(d.Levels))
 	for i := 0; i < len(d.Levels)-1; i++ {
 		require.EqualValues(t, levelData[1].LevelData.Levels[i].SellPrice, d.Levels[i].SellPrice)
@@ -95,7 +75,7 @@ func TestListLevels(t *testing.T) {
 	wsServer.rrBinaryChan <- [2]*proto.ClientMessage{nil, reconnRes}
 	wsServer.rrBinaryChan <- [2]*proto.ClientMessage{&p, respData[2]}
 	time.Sleep(100 * time.Millisecond)
-	d, _ = sub.Data.Dequeue()
+	d = <-sub.Data
 	require.Len(t, levelData[2].LevelData.Levels, len(d.Levels))
 	for i := 0; i < len(d.Levels)-1; i++ {
 		require.EqualValues(t, levelData[2].LevelData.Levels[i].SellPrice, d.Levels[i].SellPrice)
@@ -108,14 +88,16 @@ func TestListLevels(t *testing.T) {
 	err = wsServer.StopServer()
 	require.NoError(t, err)
 
-	// err = sub.StopConsuming()
-	// require.NoError(t, err)
+	err = sub.StopConsuming()
+	require.NoError(t, err)
 
 	// // produce error shutting down subscription twice
-	// err = sub.StopConsuming()
-	// require.ErrorIs(t, err, dvotcWS.ErrSubscriptionAlreadyClosed)
+	err = sub.StopConsuming()
+	require.Error(t, err)
+	require.ErrorIs(t, err, dvotcWS.ErrSubscriptionAlreadyClosed)
 }
 
+// TODO: make test below binary
 // func TestListLevels_ReuseConnection(t *testing.T) {
 // 	p := dvotcWS.Payload{
 // 		Type:  "subscribe",

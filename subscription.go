@@ -12,9 +12,15 @@ type Subscription[T any] struct {
 	isClosed bool
 	topic    string
 	event    string
+	idx      int
+
+	dvotc *DVOTCClient
 }
 
 func (s *Subscription[_]) StopConsuming() error {
+	if s.event == "levels" {
+		return cleanupLevelChannelForSymbol(s.dvotc.levelChanStore, &s.dvotc.chanMutex, s.event, s.topic, s.idx)
+	}
 	if s.isClosed {
 		return ErrSubscriptionAlreadyClosed
 	}

@@ -23,30 +23,25 @@ type Level struct {
 	MaxQuantity float64 `json:"maxQuantity"`
 }
 
-type SubscribeLevelData = Subscription[proto.LevelData]
+type SubscribeLevelData = Subscription[*proto.LevelData]
 
-type LevelSubscription struct {
-	Data    *FIFOQueue[proto.LevelData]
-	topic   string
-	event   string
-	chanIdx int
-}
-
-func (dvotc *DVOTCClient) SubscribeLevels(symbol string) (*LevelSubscription, error) {
+func (dvotc *DVOTCClient) SubscribeLevels(symbol string) (*SubscribeLevelData, error) {
 	conn, err := dvotc.getConnOrReuse(connectionLevel)
 	if err != nil {
 		return nil, err
 	}
 
-	sub := &LevelSubscription{
-		Data:    NewFIFOQueue[proto.LevelData](),
-		topic:   symbol,
-		event:   "levels",
-		chanIdx: 0,
+	sub := &SubscribeLevelData{
+		Data:  make(chan *proto.LevelData, 5),
+		done:  make(chan struct{}),
+		topic: symbol,
+		event: "levels",
+		idx:   0,
+		dvotc: dvotc,
 	}
 
 	chanIdx, connExist := checkLevelsConnExistAndReturnIdx(dvotc.levelChanStore, &dvotc.chanMutex, sub.event, sub.topic, sub.Data)
-	sub.chanIdx = chanIdx
+	sub.idx = chanIdx
 	if connExist {
 		return sub, nil
 	}
@@ -112,40 +107,66 @@ func (dvotc *DVOTCClient) readLevelMessageLoop(conn *websocket.Conn) {
 	}
 }
 
-func checkLevelsConnExistAndReturnIdx(safeChanStore map[string][]*FIFOQueue[proto.LevelData], mutex *sync.RWMutex, event, topic string, channel *FIFOQueue[proto.LevelData]) (int, bool) {
+func cleanupLevelChannelForSymbol(levelChanStore map[string][]chan *proto.LevelData, mutex *sync.RWMutex, event, topic string, channelIdx int) error {
+	mutex.Lock()
+	defer mutex.Unlock()
+	key := fmt.Sprintf("%s:%s", topic, event)
+	channels, ok := levelChanStore[key]
+	if !ok {
+		return nil
+	}
+	if channelIdx > len(channels)-1 {
+		log.Fatalf("failed to cleanup channel not existent")
+		return nil
+	}
+	if channels[channelIdx] == nil {
+		return ErrSubscriptionAlreadyClosed
+	}
+	close(channels[channelIdx])
+	channels[channelIdx] = nil
+	levelChanStore[key] = channels
+	return nil
+}
+
+func checkLevelsConnExistAndReturnIdx(levelChanStore map[string][]chan *proto.LevelData, mutex *sync.RWMutex, event, topic string, channel chan *proto.LevelData) (int, bool) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	idx := 0
 	key := fmt.Sprintf("%s:%s", topic, event)
 
-	channels, existingConnection := safeChanStore[key]
+	channels, existingConnection := levelChanStore[key]
 	if existingConnection {
 		idx = len(channels)
 		existingConnection = !channelsEmpty(channels)
 		channels = append(channels, channel)
-		safeChanStore[key] = channels
+		levelChanStore[key] = channels
 	} else {
-		safeChanStore[key] = []*FIFOQueue[proto.LevelData]{channel}
+		levelChanStore[key] = []chan *proto.LevelData{channel}
 	}
 	return idx, existingConnection
 }
 
-func dispatchLevelData(safeChanStore map[string][]*FIFOQueue[proto.LevelData], mutex *sync.RWMutex, event, topic string, data *proto.LevelData) {
+func dispatchLevelData(levelChanStore map[string][]chan *proto.LevelData, mutex *sync.RWMutex, event, topic string, data *proto.LevelData) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	key := fmt.Sprintf("%s:%s", topic, event)
-	channels, ok := safeChanStore[key]
+	channels, ok := levelChanStore[key]
 	if !ok {
 		log.Fatalf("casting to type channel failed")
 	}
 	for _, channel := range channels {
 		if channel != nil {
-			channel.enqueue(data)
+			select {
+			case channel <- data:
+				// successfully sent data in channel
+			default:
+				// message could not be sent due to full channel
+			}
 		}
 	}
 }
 
-func channelsEmpty(channels []*FIFOQueue[proto.LevelData]) bool {
+func channelsEmpty(channels []chan *proto.LevelData) bool {
 	if len(channels) == 0 {
 		return true
 	}
