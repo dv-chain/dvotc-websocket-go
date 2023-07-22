@@ -22,25 +22,19 @@ type Level struct {
 	MaxQuantity float64 `json:"maxQuantity"`
 }
 
-type SubscribeLevelData = Subscription[LevelData]
+type SubscribeLevelData = Subscription[*LevelData]
 
-type LevelSubscription struct {
-	Data    *FIFOQueue[LevelData]
-	topic   string
-	event   string
-	chanIdx int
-}
-
-func (dvotc *DVOTCClient) SubscribeLevels(symbol string) (*LevelSubscription, error) {
-	sub := &LevelSubscription{
-		Data:    NewFIFOQueue[LevelData](),
-		topic:   symbol,
-		event:   "levels",
-		chanIdx: 0,
+func (dvotc *DVOTCClient) SubscribeLevels(symbol string) (*SubscribeLevelData, error) {
+	sub := &SubscribeLevelData{
+		Data:  make(chan *LevelData, 5),
+		topic: symbol,
+		event: "levels",
+		idx:   0,
+		dvotc: dvotc,
 	}
 
 	chanIdx, ok := checkLevelsConnExistAndReturnIdx(dvotc.levelChanStore, &dvotc.chanMutex, sub.event, sub.topic, sub.Data)
-	sub.chanIdx = chanIdx
+	sub.idx = chanIdx
 	if ok {
 		// just add a new channel to list to listen to subscriptions
 		return sub, nil
@@ -98,7 +92,7 @@ func (dvotc *DVOTCClient) readLevelMessageLoop(conn *websocket.Conn) {
 	}
 }
 
-func channelsEmpty(channels []*FIFOQueue[LevelData]) bool {
+func channelsEmpty(channels []chan *LevelData) bool {
 	if len(channels) == 0 {
 		return true
 	}
@@ -110,7 +104,7 @@ func channelsEmpty(channels []*FIFOQueue[LevelData]) bool {
 	return true
 }
 
-func dispatchLevelData(safeChanStore map[string][]*FIFOQueue[LevelData], mutex *sync.RWMutex, event, topic string, data *LevelData) {
+func dispatchLevelData(safeChanStore map[string][]chan *LevelData, mutex *sync.RWMutex, event, topic string, data *LevelData) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	key := fmt.Sprintf("%s:%s", topic, event)
@@ -120,12 +114,17 @@ func dispatchLevelData(safeChanStore map[string][]*FIFOQueue[LevelData], mutex *
 	}
 	for _, channel := range channels {
 		if channel != nil {
-			channel.enqueue(data)
+			select {
+			case channel <- data:
+				// sent data
+			default:
+				// channel buffer full skipping
+			}
 		}
 	}
 }
 
-func checkLevelsConnExistAndReturnIdx(safeChanStore map[string][]*FIFOQueue[LevelData], mutex *sync.RWMutex, event, topic string, channel *FIFOQueue[LevelData]) (int, bool) {
+func checkLevelsConnExistAndReturnIdx(safeChanStore map[string][]chan *LevelData, mutex *sync.RWMutex, event, topic string, channel chan *LevelData) (int, bool) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	idx := 0
@@ -138,7 +137,28 @@ func checkLevelsConnExistAndReturnIdx(safeChanStore map[string][]*FIFOQueue[Leve
 		channels = append(channels, channel)
 		safeChanStore[key] = channels
 	} else {
-		safeChanStore[key] = []*FIFOQueue[LevelData]{channel}
+		safeChanStore[key] = []chan *LevelData{channel}
 	}
 	return idx, existingConnection
+}
+
+func cleanupLevelChannelForSymbol(levelChanStore map[string][]chan *LevelData, mutex *sync.RWMutex, event, topic string, channelIdx int) error {
+	mutex.Lock()
+	defer mutex.Unlock()
+	key := fmt.Sprintf("%s:%s", topic, event)
+	channels, ok := levelChanStore[key]
+	if !ok {
+		return nil
+	}
+	if channelIdx > len(channels)-1 {
+		log.Fatalf("failed to cleanup channel not existent")
+		return nil
+	}
+	if channels[channelIdx] == nil {
+		return ErrSubscriptionAlreadyClosed
+	}
+	close(channels[channelIdx])
+	channels[channelIdx] = nil
+	levelChanStore[key] = channels
+	return nil
 }

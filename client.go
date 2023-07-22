@@ -57,7 +57,7 @@ type DVOTCClient struct {
 
 	wsConnStore map[connectionTypes]*websocket.Conn
 	/* storing all channels to dispatch data */
-	levelChanStore map[string][]*FIFOQueue[LevelData]
+	levelChanStore map[string][]chan *LevelData
 	orderChanStore map[string]tradeData
 
 	chanMutex sync.RWMutex
@@ -83,7 +83,7 @@ func NewDVOTCClient(wsURL, apiKey, apiSecret string) *DVOTCClient {
 		apiSecret:      apiSecret,
 		wsConnStore:    make(map[connectionTypes]*websocket.Conn),
 		orderChanStore: make(map[string]tradeData),
-		levelChanStore: make(map[string][]*FIFOQueue[LevelData]),
+		levelChanStore: make(map[string][]chan *LevelData),
 		requestID:      10,
 	}
 }
@@ -206,7 +206,7 @@ func (dvotc *DVOTCClient) Ping() error {
 	return nil
 }
 
-func reSubscribeToTopics(conn *websocket.Conn, levelChanStore map[string][]*FIFOQueue[LevelData], mutex *sync.RWMutex) {
+func reSubscribeToTopics(conn *websocket.Conn, levelChanStore map[string][]chan *LevelData, mutex *sync.RWMutex) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	for k, v := range levelChanStore {
